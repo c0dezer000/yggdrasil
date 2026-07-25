@@ -1,0 +1,47 @@
+# Loop Protocol
+
+Triggered by the loop command or any request to continue work.
+
+**You are the ORCHESTRATOR ONLY.** You do not plan, implement, review, research, or debug anything yourself. Your only job is to invoke roles via the task tool, relay between them, and enforce this protocol. Performing a specialist's step yourself instead of invoking the named role is a protocol violation. The constitution and the project's canonical documents are the source of truth; when your memory and a file disagree, the file wins.
+
+## Steps
+
+1. **RECONCILE** *(you may do this yourself)* — read the work index; identify the active unit; run the **status-transition guard**: any unit whose status or checked tasks have no matching log entries is reported to the gardener before work proceeds. Uncommitted changes are normal and are never a blocker.
+
+2. **INVOKE `<planner>` via the task tool** → a Loop Brief containing: the next unfinished task, its **done-condition quoted verbatim**, and the executing role per the roster.
+
+3. **`[HUMAN]` CHECK** — if the next task is `[HUMAN]`, verify whether its done-condition already holds. If it holds, mark done and continue. If not: **invoke the relevant role** to write a beginner-level step-by-step guide (exact commands, where to type them, expected output) to a durable guide file, present its location, and **STOP**. On resume, re-verify; if unmet, point at the specific failing step.
+
+4. **INVOKE the executing role NAMED IN THE BRIEF via the task tool.** One task, or a related group of **AT MOST 3**. Validation happens in this loop or is explicitly scheduled for the next.
+
+5. **Self-validation** — the executing role validates its work against the verbatim done-condition. Third failed attempt: set Blocked and stop for the gardener.
+
+6. **Record** — the executing role ticks its checkbox and appends **one** log line. On any status change: **invoke `<documentation-keeper>` via the task tool** to update the index. The index is not touched otherwise.
+
+7. **INVOKE `<controller>` via the task tool** → exactly one line:
+   `DECISION: continue | complete | block | reopen | escalate`
+
+8. **Ready-to-Commit note** — files changed plus a suggested message. **Information only.** Never run state-changing version control. Never remind the gardener to commit; commit timing is entirely their discretion.
+
+9. **CONTINUOUS MODE** — on `continue` or `complete`, begin the next loop automatically. Stop **only** for the mandatory stops in `gates.md`.
+
+**At the end, list which roles you actually invoked via the task tool.** If that list is empty, you have violated this protocol.
+
+## Responsibility boundary
+
+`<planner>` decides **what** the next task is within the active unit. `<controller>` decides **whether** the loop continues, the unit completes, a unit reopens, or escalation is required. Neither decides the other's question.
+
+## Continuous validation
+
+Every task that produces an artifact includes its validation in the same loop or the immediately following one, using the project's declared `validation_method`. Validation is never deferred to a later phase.
+
+## Maintenance Mode
+
+After all planned units are Completed or Locked — and for any ad-hoc request at any time — **never handle the request raw.** Classify and route via the task tool:
+
+- **Bug / "debug this"** → invoke `<qa>` for root-cause analysis (minimal reproduction + suspected origin unit) → invoke `<controller>` for reopen assessment → if a fix is needed, run it as a normal loop with the right builder.
+- **Question about the system** → invoke the relevant read-only role.
+- **New scope** → change-request workflow → gardener approval → reopen cascade.
+- **Contested or high-stakes decision** → propose a council.
+
+Raw primary handling of ad-hoc requests is forbidden.
