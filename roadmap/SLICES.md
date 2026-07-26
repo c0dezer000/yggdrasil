@@ -5,13 +5,12 @@ The single file that answers "where does this project stand." Read at every boot
 | Unit | File | Objective | Status | Depends | Loops | Updated |
 |---|---|---|---|---|---|---|
 | P0 | `P0-foundation.md` | Companion runs from files alone; conformance subset recorded | Completed | — | 8 | 2026-07-26 |
-| P1 | `P1-memory.md` | Memory in daily use; adoption protocols | In Progress | P0 | 10 | 2026-07-26 |
-| P2 | *(created at P1 close)* | Portability + `ygg` CLI · **MVP** | Not Started | P1 | 0 | — |
-| P3 | *(created at P2 close)* | Always-on presence | Not Started | P2 | 0 | — |
+| P1 | `P1-memory.md` | Memory in daily use; adoption protocols | In Progress | P0 | 11 | 2026-07-26 |
+| P2 | `P2-portability.md` | Portability + `ygg` CLI · **MVP** | In Progress | P1 | 6 | 2026-07-26 |
+| P3 | `P3-presence.md` | Always-on presence | In Progress | P2 | 1 | 2026-07-26 |
 | P4 | *(created at P2 close)* | Local-model bench + interop | Not Started | P2 | 0 | — |
 
 **Status values:** Not Started · In Progress · Blocked · Needs Review · Completed · Locked
 (Locked is gardener-only.)
 
-**Rule:** a later unit's file is created when its predecessor closes, not in advance. Detail
-written ahead of evidence gets rewritten before it is used.
+**Rule:** a unit's file may be created when its predecessor's build tasks complete, allowing concurrent phases. Detail written ahead of evidence gets rewritten before it is used.

@@ -1,13 +1,13 @@
-.ygg
-node_modules/
-.opencode/
-
-# machine-specific seed pointer — never shared
+# machine-specific seed pointer - never shared
 .ygg
 
 # host install directories are generated from seed/adapters/, not authored
 .opencode/
 .claude/
+
+# session transcripts are not canon - keep them out of the repo
+session-*.md
+session-ses_*.md
 
 # editor
 .vscode/

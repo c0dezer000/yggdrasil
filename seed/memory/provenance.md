@@ -93,3 +93,9 @@ the failure was E11, before the two-step ratification fix; both encounters since
 is the pattern the ledger is meant to make visible: a rule that failed, was repaired, and has held.
 `roster compliance` shows 1 encounter and **0** correct stops — a rule that has been tested once and
 failed once. It has not yet been tested since the allowlist fix.
+
+- **2026-07-26 roster compliance (first encounter since allowlist fix):** Heimdall was invoked correctly via the task tool for the web-search connector capability proposal, rather than substituted with a host-built-in role. This is the first encounter since the allowlist fix and passes. [source: session 2026-07-26, loop 1.11]
+- **2026-07-26 E30 correction:** Gardener corrected the lethal-trifecta assessment — heimdall assessed what the capability adds rather than what holds in the resulting configuration. Recorded in decisions.md as E30. [source: gardener correction 2026-07-26]
+
+2026-07-26 · `capability` · ratification · @bifrost boundaries amendment ratified — boundaries.md §Must ask amended to permit state-changing git via @bifrost on explicit instruction. Gate 4 conditions accepted. · evidence: seed/memory/staging.md §45-63, seed/constitution/boundaries.md §Must ask
+2026-07-26 · `conformance` · ratification · Graduated autonomy framework ratified — protocol generated at seed/protocols/graduated-autonomy.md. No domain currently qualifies. · evidence: seed/memory/staging.md §65-105, seed/protocols/graduated-autonomy.md

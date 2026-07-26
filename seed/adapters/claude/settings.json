@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash",
+      "Agent",
+      "Task",
+      "GitStatus",
+      "GitLog",
+      "GitDiff",
+      "GitShow"
+    ],
+    "deny": [
+      "GitCommit",
+      "GitPush",
+      "GitPull",
+      "GitMerge",
+      "GitRebase",
+      "GitReset",
+      "GitCheckout",
+      "GitBranch(DELETE)",
+      "GitTag(DELETE)",
+      "Bash(sudo*)"
+    ]
+  }
+}

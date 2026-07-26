@@ -104,3 +104,26 @@
 - **Evidence:** `prior-evidence/FINDINGS.md` E26–E28, `seed/adapters/opencode/agents/odin.md`
   (bootstrap, roster, footer sections)
 - **Author:** gardener via Odin
+
+## Entry 009 — 2026-07-26 — P1 accumulation tasks unblocked; P2 opened for build `[SELF-GOVERNANCE]`
+
+- **Change:** P1 restructured so accumulation tasks (1.12 fourteen daily digests, 1.14 cold resume with populated memory) do not gate build work. Both marked accumulating. P2 entry condition relaxed from "P1 exit gate fully checked" to "P1 build tasks complete; accumulation tasks 1.12 and 1.14 may run concurrently." P2 opened as In Progress.
+- **Rationale:** the original sequencing was a heuristic that assumed accumulation must complete before build work begins. Accumulation happens through ordinary daily use over 14 days; nothing in P2 depends on its results. Blocking P2 behind 1.12 would idle build work for two weeks with no benefit.
+- **Tasks unblocked:** 1.13 (onboard existing project — actionable now), P2 Group A (ygg doctor, ygg plant, ygg verify), Group B (second host), Group C (remaining assertions), Group D (capability gates).
+- **Evidence:** `roadmap/P1-memory.md` (Notes on pacing, task annotations), `roadmap/P2-portability.md` (entry condition), `roadmap/SLICES.md` (P2 status).
+- **Author:** gardener via Odin
+
+## Entry 010 — 2026-07-26 — P3 opened for presence work; cross-host concurrency `[SELF-GOVERNANCE]`
+
+- **Change:** P3 (Always-on presence) opened before P2 fully closes. P2's cross-host conformance tasks (2.8, 2.10) remain open and run concurrently. P3 entry condition relaxed from "P2 closed" to "P2 build tasks complete."
+- **Rationale:** P3 provides heartbeat, daily briefings, and goal-stall alerts that are valuable on the current machine immediately. Blocking presence behind portability verification (which requires a second workstation) would defer a practical capability upgrade for no benefit — the companion runs on this machine now.
+- **Tasks unblocked:** 3.1 (heartbeat mechanism), 3.2 (briefing format), 3.3 (stall detection), 3.7 (verification), 3.4-3.6 (gardener hardening).
+- **Evidence:** `roadmap/SLICES.md` (P3 status), `roadmap/P3-presence.md` (task breakdown), this entry.
+- **Author:** gardener via Odin
+
+## Entry 011 — 2026-07-26 — Two staged items ratified `[SELF-GOVERNANCE]`
+
+- **Change:** (1) boundaries.md §Must ask amended to permit state-changing git via @bifrost on explicit gardener instruction. (2) Graduated autonomy framework ratified and protocol generated at seed/protocols/graduated-autonomy.md.
+- **Rationale:** Gardener approved both staged items. @bifrost Gate 4 conditions accepted (specific git allow-rules, plan-then-confirm workflow, behavioural-only seed memory gap documented, no fetch/pull/clone). Autonomy framework provides the first-ever criteria for domains to graduate from must-ask to may-do-alone.
+- **Evidence:** `seed/memory/staging.md` §45-63 and §65-105, `seed/constitution/boundaries.md` §Must ask, `seed/protocols/graduated-autonomy.md`.
+- **Author:** gardener via Odin

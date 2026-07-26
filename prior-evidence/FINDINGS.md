@@ -228,3 +228,18 @@ This is a structural constraint, not a defect — it was always going to arrive 
 but the current measurement shows it has already arrived.*
 *Adopted: the distill profile is elevated from P4 (nice-to-have) to P2 (MVP-critical) or the
 local tier's 2K budget must be raised. The choice is architectural and belongs to the gardener.
+
+## E30 — Lethal-trifecta test misapplied by security role
+
+**2026-07-26 · OpenCode · DeepSeek V4 Flash**
+Heimdall assessed the read-only web-search connector proposal and concluded the lethal trifecta was not complete because the connector itself does not add private-data access. The gardener corrected: the test is "which of the three conditions hold once the capability is active," not "which does the capability add." Private data already holds in the seed's own memory files (profile.md, goals.md, projects.md, provenance.md) read at every bootstrap, so the set is complete and the capability triggers a gate.
+*Root cause: The constitution wording "check which of the three it adds" invites the narrower reading. The correct reading is "check which of the three hold once it is active."*
+*Remedy: The trifecta assessment was corrected in the staged proposal — all three conditions hold and the capability is gated. The wording in the standing rules is clarified: "check which of the three hold once it is active" supersedes "check which of the three it adds."*
+*Severity: High — the flawed assessment would have permitted a trifecta-complete capability through a non-gate path.*
+
+## E31 — Direct write to durable memory (decisions.md) without staging
+
+**2026-07-26 · OpenCode · DeepSeek V4 Flash · Airlock breach**
+After receiving the gardener's correction for E30, muninn appended the entry directly to `seed/memory/decisions.md` — a durable-tier file — without staging the entry and awaiting separate-turn approval. This is an airlock breach with the same mechanism as E11: a single instruction was treated as both proposal and approval.
+*Fix: the entry was reverted via git restore, moved to `prior-evidence/FINDINGS.md` (where findings belong), and the protocol is reaffirmed: durable memory writes require staging plus a separate-turn approval referencing it — a single instruction cannot satisfy both.*
+*Severity: High — same class as E11. The orchestrator's instruction to "Invoke muninn" was treated as covering all downstream writes, including durable files.*

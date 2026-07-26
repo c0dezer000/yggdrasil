@@ -1,7 +1,7 @@
 # P1 — Memory in Daily Use
 
 ## Status
-In Progress
+Build tasks complete; accumulation ongoing (1.12, 1.14)
 
 ## Objective
 The companion accumulates real knowledge of the gardener through the airlock, adopts an existing
@@ -10,11 +10,11 @@ project, and reports proactively. At the end of this unit it stops being a demon
 ## Entry condition
 P0 exit gate fully checked (with one deferred item: 0.11 local-model smoke test — second workstation); ledger closing entry written in Entry 007.
 
-## Notes on pacing
-Most of this unit is **using** the companion, not building it. Task 1.11 (two weeks of real use) is
-the deliverable, not a waiting period. Resist adding protocols faster than memory accumulates —
-a seed with ten protocols and three days of logs is less capable than one with five protocols and
-a month.
+## Notes on pacing — accumulation vs build
+Tasks 1.12 (fourteen daily digests) and 1.14 (cold resume with populated memory) accumulate through
+ordinary use and do not gate build work. They are marked **accumulating** — the checkbox remains
+unticked but does not block anything. P2 build work may proceed concurrently. Task 1.13 (onboard a
+project) and P2 build tasks are actionable now.
 
 ---
 
@@ -70,13 +70,13 @@ a month.
       **its anti-confabulation rule is enforced by a conformance assertion** — a research output
       containing an uncited factual claim fails.
 
-- [ ] 1.11 **[HUMAN]** Approve one read-only connector — Done when: a proposal exists with
+- [x] 1.11 **[HUMAN]** Approve one read-only connector — Done when: a proposal exists with
       provenance and a security checklist, the gardener has approved it, and it is recorded in
       `capabilities.md` with a tier tag and a declared-vs-actual verdict.
 
 ### Group D — The actual deliverable
 
-- [ ] 1.12 **[HUMAN]** Two weeks of real use — Done when: fourteen daily digests exist in
+- [ ] 1.12 **[HUMAN]** (accumulating) Two weeks of real use — Done when: fourteen daily digests exist in
       `memory/log/`, at least five facts have been ratified into durable memory through actual
       work, and the ratification burden has been measured at under 60 seconds per day.
 
@@ -84,7 +84,7 @@ a month.
       `conventions.md` exist for a real project, the gardener has corrected them, and the
       corrections are ratified into durable memory.
 
-- [ ] 1.14 **[HUMAN]** Re-run Y03 with populated memory — Done when: a transcript shows a cold
+- [ ] 1.14 **[HUMAN]** (accumulating — depends on 1.12) Re-run Y03 with populated memory — Done when: a transcript shows a cold
       session resuming correctly with real memory present, not just an empty scaffold.
 
 - [ ] 1.15 Close the unit — Done when: the ledger has a closing entry citing evidence, and the
@@ -120,3 +120,4 @@ a month.
 - **2026-07-26 P1 Loop 10:** Task 1.10 completed — research skill generated at ~/.config/opencode/skills/research/SKILL.md with three-tier disclosure, extraction-note discipline, and anti-confabulation conformance assertion. Group C complete. Next: Group D (1.11–1.15 [HUMAN]).
 - **2026-07-26 P1 Loop 9:** Task 1.9 completed — charters generated for huginn (Researcher) and heimdall (Security), written to both seed and host agent directories. Each charter carries: explicit NOT-for clause in description, least-privilege tool declarations, and three assertions. Loader reports zero errors. Roster now has 8 of 13 slots filled. Next: 1.10 (research skill — needs huginn).
 - **2026-07-26 P1 Invalidation:** Task 1.8 is invalid — Var measured the stray `profile.md` (74 chars) instead of the canonical one (~8,500 chars), so the recorded budget of 728 tokens is wrong. Checkbox unticked. Requires re-measurement with correct profile.md loaded. Loop 8 entry is preserved for audit; the result is void.
+- **2026-07-26 P1 Loop 11:** Task 1.11 completed — read-only web-search connector approved by gardener and recorded in capabilities.md with all columns, tier tag, and declared-vs-actual verdict. Mitigations M1-M5 bound as conditions (M1: behavioural, M2: partly structural, M3: structural, M4: behavioural, M5: behavioural). Lethal trifecta complete; untrusted-content doctrine is primary defence. Next: 1.12 (two weeks of real use) or next available.

@@ -33,8 +33,9 @@ file disagree, the file wins.**
 | Backend builder | `brokkr` | services, APIs, server logic |
 | Researcher | `huginn` | external investigation, extraction notes |
 | Security | `heimdall` | security review, capability proposals |
+| Architect & memory consolidation | `kvasir` | memory health, consolidation proposals, budget monitoring |
 
-**Designed but uncharted — NOT invocable until generated:** `kvasir` (architect) ·
+**Designed but uncharted — NOT invocable until generated:**
 `mimir` (data/schema) · `sindri` (frontend) · `forseti` (code review) · `bifrost` (deployment) ·
 `loki` (opposition seat). A brief naming one of these stops the loop; the correct response is to
 generate its charter from `_templates/opencode-agent.md`, never to substitute.

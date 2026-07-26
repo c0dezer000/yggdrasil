@@ -1,0 +1,53 @@
+{
+  // LITERAL TEMPLATE — Claude Code settings.json (Mode B)
+  // Copy verbatim. Fill ONLY the <slots>. Never compose this format from memory.
+  //
+  // TRAP: This is JSON, not JSON5. Comments (//) are NOT valid in the actual file.
+  //        Remove ALL comment lines before deploying. They are included here for documentation only.
+  //
+  // TRAP: Use Tool(specifier) syntax with * wildcards.
+  //        Wildcards match at word boundaries, not character boundaries.
+  //        "git status*" matches "git status" and "git status -s" but NOT "git status-all".
+  //
+  // TRAP: OpenCode uses "permission" (singular) at the top level.
+  //        Claude Code uses "permissions" (plural) as the top key.
+  //
+  // TRAP: Claude Code merges settings from multiple locations.
+  //        Project-level (.claude/settings.json) overrides user-level (~/.claude/settings.json).
+  //        Tool permissions cascade: agent frontmatter > settings.json > defaults.
+
+  // Mode B: Read-only version control allowed.
+  //         All state-changing version control denied.
+  //         Tools not listed default to "ask" (prompt before executing).
+  "permissions": {
+    "allow": [
+      // Read-only git operations — always allowed
+      "GitStatus",
+      "GitLog",
+      "GitDiff",
+      "GitShow",
+      // Core read tools
+      "Read",
+      "Glob",
+      "Grep",
+      // <add other allowed tools>
+    ],
+    "deny": [
+      // State-changing git — always denied
+      "GitCommit",
+      "GitPush",
+      "GitPull",
+      "GitMerge",
+      "GitRebase",
+      "GitReset",
+      "GitCheckout",
+      "GitBranch(DELETE)",
+      "GitTag(DELETE)",
+      // Dangerous system operations
+      "Bash(sudo*)",
+      "Bash(npm publish*)",
+      "Bash(rm -rf*)",
+      // <add other denied tools>
+    ]
+  }
+}

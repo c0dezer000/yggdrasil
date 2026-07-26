@@ -1,0 +1,38 @@
+﻿# L1 Gate Log - 2026-07-26
+# Capability: 1 capability(ies) checked
+
+- capability: web-search
+  check: C1
+  name: Schema validity
+  result: PASS
+  detail: All 12 columns valid
+  timestamp: 2026-07-26 16:24:21
+
+- capability: web-search
+  check: C2
+  name: Host loadability
+  result: PASS
+  detail: All referenced paths exist, tools loadable
+  timestamp: 2026-07-26 16:24:21
+
+- capability: web-search
+  check: C3
+  name: Trigger overlap
+  result: PASS
+  detail: No trigger overlap detected
+  timestamp: 2026-07-26 16:24:21
+
+- capability: web-search
+  check: C4
+  name: Declared vs actual
+  result: PASS
+  detail: Declared and actual usage match; tools/exposed ratio valid
+  timestamp: 2026-07-26 16:24:21
+
+- capability: web-search
+  check: C5
+  name: Under-declaration flag
+  result: PASS
+  detail: No under-declaration or hidden issues found
+  timestamp: 2026-07-26 16:24:21
+
