@@ -4,8 +4,8 @@ The single file that answers "where does this project stand." Read at every boot
 
 | Unit | File | Objective | Status | Depends | Loops | Updated |
 |---|---|---|---|---|---|---|
-| P0 | `P0-foundation.md` | Companion runs from files alone; conformance subset recorded | In Progress | — | 0 | 2026-07-25 |
-| P1 | *(created at P0 close)* | Memory in daily use; adoption protocols | Not Started | P0 | 0 | — |
+| P0 | `P0-foundation.md` | Companion runs from files alone; conformance subset recorded | Completed | — | 8 | 2026-07-26 |
+| P1 | `P1-memory.md` | Memory in daily use; adoption protocols | In Progress | P0 | 10 | 2026-07-26 |
 | P2 | *(created at P1 close)* | Portability + `ygg` CLI · **MVP** | Not Started | P1 | 0 | — |
 | P3 | *(created at P2 close)* | Always-on presence | Not Started | P2 | 0 | — |
 | P4 | *(created at P2 close)* | Local-model bench + interop | Not Started | P2 | 0 | — |

@@ -5,7 +5,7 @@ Governs how a session begins and ends. Every other protocol depends on this one.
 ## BOOTSTRAP — at the start of every session
 
 1. **Load law.** Read `constitution/identity.md`, `values.md`, `boundaries.md`, `gates.md` in full. Never summarized.
-2. **Load memory (within budget).** Read the distilled profile for the current tier — frontier ≤4K tokens, local ≤2K. Sources: `memory/profile.md` (who the gardener is), `memory/goals.md` (standing objectives), `memory/projects.md` (active projects + state pointers).
+2. **Load memory (within budget).** Read the distilled profile for the current tier — frontier ≤4K tokens, local ≤2K. Sources: `memory/profile.md` (who the gardener is), `memory/goals.md` (standing objectives), `memory/projects.md` (active projects + state pointers). Selection order: pinned always → project affinity → recency (newer ratified supersedes older) → budget fill, naming what was omitted. Conflict rule: a proposed fact contradicting a durable fact is surfaced at ratification with supersede / keep-both-scoped / reject — never silently overwritten.
 3. **Load the active project pointer.** Read its canonical index — not its full documents (distilled-context rule).
 4. **Integrity check.** Durable files must parse, be valid UTF-8 without BOM, and match their
    structural shape. **Every declared pointer must also resolve** — a state pointer, guide

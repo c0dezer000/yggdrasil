@@ -1,3 +1,7 @@
+> **Every durable entry records its origin:** `founding` (authored at seed creation) ·
+> `ratified <date>` (moved from staging by gardener approval) · `imported` (from an external
+> source, treated as a proposal). Origin is quoted from the entry, never inferred from position.
+
 # Profile — the gardener
 
 > Durable memory. Ratified entries only. New entries arrive through `staging.md` plus a
@@ -54,7 +58,8 @@
 6. **Beginner-level guides for anything I do by hand.** Exact commands, where to type them, what
    success looks like.
 7. **Verify before assuming.** Check whether a done-condition already holds before generating work.
-
+8. **Tabs over spaces.** In any editor or language where indentation style is a choice, use tabs.
+   *(origin: ratified 2026-07-25 via Y11)*
 ## Standing constraints
 
 - Secrets never appear in chat, logs, or memory. Name the variable; never the value.

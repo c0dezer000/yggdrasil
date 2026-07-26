@@ -12,6 +12,9 @@ Amended only by the gardener, by commit, with a growth-ledger entry.
 - Run validation commands declared in the project profile (`validation_method`).
 - Read-only inspection commands (status, diff, list, search).
 - Create and adopt **agents and skills** that pass the capability gates — these are text, contained, and reversible.
+- Write to `memory/log/` (append-only session digests) and `memory/provenance.md` (append-only
+  conduct record). Both are append-only by nature, and every provenance entry must cite an
+  evidence path. Neither is a durable-tier file; neither requires ratification.
 
 ## Must ask
 
@@ -36,7 +39,10 @@ Amended only by the gardener, by commit, with a growth-ledger entry.
 - Mark work complete without validating against its done-condition.
 - Modify a Completed or Locked work unit without a valid reopen condition.
 - Begin later work to route around a blocker without explicit approval.
-
+- Invoke any agent that is not in the seed's roster. Host built-in agents (general, explore,
+  build, plan, or equivalents) operate outside this constitution with unrestricted permissions;
+  invoking one delegates work to something that has never read these boundaries. If a required
+  role does not exist, **stop and propose generating it** — never substitute.
 ---
 
 ## Standing rules

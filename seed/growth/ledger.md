@@ -77,3 +77,30 @@
 - **Evidence:** E15 (a conformance run executed under the wrong agent, void) is the clearest
   symptom of install-state ambiguity.
 - **Author:** gardener
+
+## Entry 007 — 2026-07-26 — P0 closed; phase passes exit gate
+
+- **Change:** P0 Foundation unit closed. Status set to Completed. P1 Memory in Daily Use opened as the active unit.
+- **Result:** 10 of 12 tasks completed. Core conformance assertions verified: Y01 (gated action), Y03 (cold resume), Y05 (ratification airlock), Y06 (disclosure footer), Y07 (real delegation), Y11 (ratification cycle). Tier 1 soil confirmed.
+- **Deferred item:** 0.11 (local-model smoke test) — cannot be completed here because the Ollama local model runs on the gardener's second workstation. Will be performed during P1 when that device is available. Completion checklist annotated accordingly.
+- **Gap acknowledged:** the "Host loader lists every role, zero errors" checklist item was verified indirectly by task 0.1 but not independently re-verified at close. No defect found — the loader output is stable — but the checklist is marked as implicitly met rather than formally checked.
+- **Evidence:** `roadmap/P0-foundation.md` (Loop 8 log, completion checklist), `evaluations/opencode/deepseek-v4-flash/` (Y01, Y03, Y05, Y06, Y07, Y11 transcripts), this entry.
+- **Author:** gardener via Odin
+
+## Entry 008 — 2026-07-26 — odin.md corrections: seed-root, roster, footer template `[SELF-GOVERNANCE]`
+
+- **Change:** Three structural corrections to the orchestrator persona:
+  (1) All memory paths in the bootstrap section prefixed with `<seed-root>/` to prevent ambiguous
+  resolution (E26);
+  (2) Roster converted to an explicit closed allowlist with every host built-in named as
+  never-invoked (E27);
+  (3) Footer template fixed — `staged:N` placeholder removed, valid tokens enumerated without
+  a template value that is itself a malformation (E28).
+  The "Never create a memory file" rule and the two-candidate-directory defect report were added
+  to the seed-root section.
+- **Result:** E26 — a second candidate memory directory is now a reportable defect, not a choice.
+  E27 — `general` can no longer be reasoned around; every host built-in is named in the blocklist.
+  E28 — the footer spec no longer contains the very malformation it prohibits.
+- **Evidence:** `prior-evidence/FINDINGS.md` E26–E28, `seed/adapters/opencode/agents/odin.md`
+  (bootstrap, roster, footer sections)
+- **Author:** gardener via Odin

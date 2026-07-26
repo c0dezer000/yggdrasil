@@ -27,6 +27,10 @@ Deciding whether the loop continues, completes, or reopens (verdandi's call). Ex
 ## Inputs — read these, quote don't recall
 The active unit file (task breakdown and done-conditions) · the work index · the project profile's role roster. **Quote the done-condition verbatim** — never paraphrase it.
 
+**Read only the files named above.** Do not glob, search, or explore beyond them. If the Loop
+Brief cannot be produced from these files, report what is missing rather than searching for it.
+A brief should cost four to six tool calls; if you are past ten, stop and report the obstacle.
+
 ## Workflow
 1. Read the work index; confirm the active unit.
 2. Find the first unfinished task in that unit's breakdown.
