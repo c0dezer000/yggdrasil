@@ -298,7 +298,7 @@ function Invoke-OpenCodeRun {
     # Passing it as an argument required escaping embedded quotes, and any argument-splitting
     # in this function then shredded the prompt at its spaces. Piping removes the whole class.
     # $AgentName is a bare token from a fixed allowlist, so it is safe to pass as an argument.
-    param([string]$AgentName, [string]$ChatId, [string]$PromptFile)
+    param([string]$AgentName, [string]$ChatId, [string]$PromptFile, [int]$Timeout = 120)
 
     try {
         # Run via PowerShell job to avoid deadlocks.
@@ -354,7 +354,7 @@ function Invoke-OpenCodeRun {
         # Wait for main job with timeout. Receive-Job WITHOUT 2>&1 [E77] -- merging the job's
         # error stream here is what put PowerShell error furniture (+ CategoryInfo, + FullyQualified
         # ErrorId, + PSComputerName) into the gardener's replies.
-        $job | Wait-Job -Timeout 120 | Out-Null
+        $job | Wait-Job -Timeout $Timeout | Out-Null
         $result = $job | Receive-Job
         $null = Wait-Job $typingJob -Timeout 3 2>$null
         Remove-Job $typingJob -ErrorAction SilentlyContinue
@@ -483,7 +483,11 @@ function Process-Message {
     }
 
     # ---- Stage 1: Y10 check - ratification refusal ----
-    if (Test-RatificationAttempt -Text $Text) {
+    # @-prefixed messages bypass Y10 because they route to the queue which is
+    # processed by the local session — satisfying Y10's requirement that ratification
+    # happens in a local session. Unprefixed messages are still blocked.
+    $bypassY10 = $Text -match '^@\w+\s+'
+    if (-not $bypassY10 -and (Test-RatificationAttempt -Text $Text)) {
         Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "blocked-y10"
         $script:ratificationBlocked++
         $script:lastActivity = Get-Timestamp
@@ -502,6 +506,46 @@ function Process-Message {
             Send-TelegramMessage -ChatId $ChatId -Text "Embedded instructions detected and refused. Content treated as untrusted per Y04."
             return
         }
+    }
+
+    # ---- Execution rate limiter (separate from Q&A) ----
+    if (-not $script:execRateTracker) { $script:execRateTracker = @{} }
+    $execRate = $script:execRateTracker[$ChatId]
+    if (-not $execRate) { $execRate = @{ lastExecution = $null; hourlyCount = 0; dailyCount = 0; hourlyWindow = (Get-Date); dailyWindow = (Get-Date) } }
+
+    # Only check rate limits if this is an @odin execution
+    if ($Text -match '^@odin\b') {
+        $now = Get-Date
+
+        # Reset hourly counter if window expired
+        if ($now -gt $execRate.hourlyWindow.AddHours(1)) { $execRate.hourlyCount = 0; $execRate.hourlyWindow = $now }
+        # Reset daily counter if window expired
+        if ($now -gt $execRate.dailyWindow.AddDays(1)) { $execRate.dailyCount = 0; $execRate.dailyWindow = $now }
+
+        # Check per-execution cooldown
+        if ($execRate.lastExecution -and ($now -lt $execRate.lastExecution.AddSeconds(120))) {
+            $wait = [math]::Round(($execRate.lastExecution.AddSeconds(120) - $now).TotalSeconds)
+            Send-TelegramMessage -ChatId $ChatId -Text "Please wait $wait seconds between execution requests."
+            return
+        }
+
+        # Check hourly cap
+        if ($execRate.hourlyCount -ge 5) {
+            Send-TelegramMessage -ChatId $ChatId -Text "Execution limit reached (5/hour). Try again later."
+            return
+        }
+
+        # Check daily cap
+        if ($execRate.dailyCount -ge 20) {
+            Send-TelegramMessage -ChatId $ChatId -Text "Daily execution limit reached (20/day). Resets at midnight."
+            return
+        }
+
+        # Update counters
+        $execRate.lastExecution = $now
+        $execRate.hourlyCount++
+        $execRate.dailyCount++
+        $script:execRateTracker[$ChatId] = $execRate
     }
 
     # ---- Stage 3: Remote execution ----
@@ -618,20 +662,72 @@ function Process-Message {
         $agentPrompt = $matches[2].Trim()
 
         # Security: restrict to read-only agents (Yggdrasil rule -- never builder/deployment)
-        $allowedAgents = @("ratatoskr")  # primary-mode + read-only only [E75]
+        $allowedAgents = @("ratatoskr", "odin")  # ratatoskr for Q&A, odin for execution [Gate 4]
         if ($agentName -notin $allowedAgents) {
-            $errMsg = "Agent '@$agentName' is not available remotely. The remote channel serves one agent, ratatoskr, which is read-only. The roster agents (skuld, var, huginn, kvasir and the rest) are subagents - opencode cannot start them directly, and naming one silently falls back to an unrestricted default. Use a local session for those."
+            $errMsg = "Agent '@$agentName' is not available remotely. The remote channel serves two agents: ratatoskr (read-only Q&A) and odin (execution). The roster agents (skuld, var, huginn, kvasir and the rest) are subagents - opencode cannot start them directly, and naming one silently falls back to an unrestricted default. Use a local session for those."
             Send-TelegramMessage -ChatId $ChatId -Text $errMsg
             Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "agent-restricted" -ResponseText $errMsg
             return
         }
 
         Write-Host "  Invoking agent @$agentName from $ChatId" -ForegroundColor DarkCyan
-        # Escape embedded double-quotes for the -p argument
         # Prompt goes via file, not -p. No quote escaping, no splitting hazard. [E74]
         $agentPromptFile = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "ygg-prompt-$(Get-Random).txt"
-        $agentPrompt | Out-File -FilePath $agentPromptFile -Encoding UTF8 -Force
-        $output = Invoke-OpenCodeRun -AgentName $agentName -ChatId $ChatId -PromptFile $agentPromptFile
+
+        if ($agentName -eq "odin") {
+            # ---- File-based handoff to local session ----
+            # Write the task to a queue file. The local session picks it up and executes it.
+            # The daemon stays responsive because polling happens in a background job.
+            $taskId = "task-$(Get-Date -Format 'yyyyMMdd-HHmmss-ffff')"
+            $taskTimestamp = Get-Timestamp
+            $taskQueueFile  = Join-Path -Path $yggRoot -ChildPath "work\task-queue.md"
+            $taskResultFile = Join-Path -Path $yggRoot -ChildPath "work\task-result.md"
+            $workDir = Join-Path -Path $yggRoot -ChildPath "work"
+
+            if (-not (Test-Path -LiteralPath $workDir -PathType Container)) {
+                New-Item -ItemType Directory -Path $workDir -Force | Out-Null
+            }
+
+            # Write task to queue (pipe-delimited: taskId|timestamp|prompt)
+            $taskContent = "$taskId|$taskTimestamp|$agentPrompt"
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($taskQueueFile, $taskContent, $utf8NoBom)
+            Write-Host "  Task $taskId queued for local session" -ForegroundColor DarkCyan
+            Send-TelegramMessage -ChatId $ChatId -Text "Task queued. Executing in session..."
+
+            # Spawn background job to poll for result — daemon stays responsive
+            $null = Start-Job -Name "task-poll-$taskId" -ScriptBlock {
+                param($taskId, $taskResultFile, $yggRoot, $ChatId, $tgToken)
+                $pollStart = Get-Date
+                $output = $null
+                while (((Get-Date) - $pollStart).TotalSeconds -lt 300 -and -not $output) {
+                    Start-Sleep -Seconds 10
+                    if (Test-Path -LiteralPath $taskResultFile -PathType Leaf) {
+                        $rc = Get-Content -Path $taskResultFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+                        if ($rc -match "(?m)^TASK_ID:\s*$([regex]::Escape($taskId))\s*$") {
+                            if ($rc -match '(?s)RESULT:\s*\r?\n(.+?)\r?\nEND') {
+                                $output = $matches[1].Trim()
+                                Remove-Item -Path $taskResultFile -Force -ErrorAction SilentlyContinue
+                            }
+                        }
+                    }
+                }
+                if (-not $output) { $output = "Task timed out (300s). The task may still be pending." }
+                $body = @{ chat_id = $ChatId; text = $output } | ConvertTo-Json
+                $null = Invoke-RestMethod -Uri "https://api.telegram.org/bot${tgToken}/sendMessage" -Method Post -Body $body -ContentType "application/json" -ErrorAction SilentlyContinue
+                $el = Join-Path -Path $yggRoot -ChildPath "logs\remote\execution-$(Get-Date -Format 'yyyy-MM-dd').md"
+                $sp = $agentPrompt.Substring(0, [Math]::Min(80, $agentPrompt.Length))
+                "$(Get-Date -Format 'HH:mm:ss') | @odin | exit=0 | input=$sp | output_len=$($output.Length)" | Out-File $el -Encoding UTF8 -Append
+            } -ArgumentList $taskId, $taskResultFile, $yggRoot, $ChatId, $script:tgToken
+
+            # Immediately acknowledge — daemon is not blocked
+            $output = "Task queued (ID: $taskId). I will send the result when the session completes."
+        } else {
+            # Existing ratatoskr path unchanged
+            $agentPrompt | Out-File -FilePath $agentPromptFile -Encoding UTF8 -Force
+            $output = Invoke-OpenCodeRun -AgentName $agentName -ChatId $ChatId -PromptFile $agentPromptFile
+        }
+
         if (Test-Path $agentPromptFile) { Remove-Item $agentPromptFile -Force -ErrorAction SilentlyContinue }
         $stageTag = "agent-$agentName"
     } else {

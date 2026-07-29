@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
   Yggdrasil CLI - dispatches subcommands for environment checks, seed operations,
-  capability gating, and installation.
+  capability gating, installation, and knowledge retrieval.
 .DESCRIPTION
   Usage: ygg subcommand [args...]
   Subcommands:
@@ -15,6 +15,8 @@
     listen     - start Telegram inbound listener (P3 always-on presence)
     daemon     - manage background daemon (start|stop|status|install|uninstall)
     session-state - update or clear the ephemeral session-state file (manual invocation only)
+    retrieve   - look up file paths by topic in the knowledge index (grep-based)
+    embed      - re-embed all seed markdown files using nomic-embed-text via Ollama
 #>
 
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
@@ -79,6 +81,18 @@ switch ($resolvedSubcommand.ToLower()) {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-session-state.ps1") @resolvedArgs
         exit $LASTEXITCODE
     }
+    "retrieve" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-retrieve.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "embed" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-embed.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "check-queue" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-check-queue.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
     default {
         if ($resolvedSubcommand) {
             Write-Host "Unknown subcommand: $resolvedSubcommand" -ForegroundColor Red
@@ -98,6 +112,9 @@ switch ($resolvedSubcommand.ToLower()) {
         Write-Host "  listen     Start Telegram inbound listener (P3 always-on presence)" -ForegroundColor Gray
         Write-Host "  daemon     Manage background daemon (start|stop|status|install|uninstall)" -ForegroundColor Gray
         Write-Host "  session-state  Update or clear the ephemeral session-state file (manual invocation only)" -ForegroundColor Gray
+        Write-Host "  retrieve      Look up file paths by topic in the knowledge index (grep-based)" -ForegroundColor Gray
+        Write-Host "  embed         Re-embed all seed markdown files using nomic-embed-text via Ollama" -ForegroundColor Gray
+        Write-Host "  check-queue   Check Telegram task queue for local session execution" -ForegroundColor Gray
         exit 1
     }
 }
