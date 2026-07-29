@@ -1,5 +1,7 @@
 # Planning Board
 
+**See also:** [[agents/skuld]], [[agents/kvasir]], [[agents/var]], [[agents/heimdall]], [[agents/verdandi]], [[agents/loki]]
+
 Organizational structure for the roles, and the review a plan passes **before** work begins.
 
 **Why this exists.** The loop is linear: plan → execute → validate. Gaps therefore surface after
@@ -73,6 +75,14 @@ short invocations, not a council.
 
 The plan: units, tasks, done-conditions, and the executing role for each. Done-conditions are
 quoted verbatim from their source, never paraphrased.
+
+### Step 1.5 — Pre-mortem
+
+Before the three checks, each critic writes a short entry to `00-pre-mortem.md` (in the
+deliberation workspace) under the heading *"Assume this plan has failed. What went wrong?"*
+naming the most likely failure mode from their perspective. The pre-mortem file is read by all
+critics before they write their checks. This makes failure modes legible before any critic is
+invested in their own position.
 
 ### Step 2 — Three checks, in parallel, from different labs
 

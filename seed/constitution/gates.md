@@ -1,5 +1,7 @@
 # Gates
 
+**See also:** [[agents/heimdall]] (Gate 4), [[agents/verdandi]] (decisions)
+
 Named stopping points where authority passes to the gardener. Gates are not advisory.
 
 ## Gate 1 — Plan Approval

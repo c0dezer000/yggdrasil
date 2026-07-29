@@ -37,6 +37,16 @@ $pidFile        = Join-Path -Path $yggRoot -ChildPath ".ygg-daemon.pid"
 $stopSignalFile = Join-Path -Path $yggRoot -ChildPath ".ygg-daemon-stop"
 $statusFile     = Join-Path -Path $yggRoot -ChildPath ".ygg-daemon.json"
 
+# Interactive bridge (Option E). Delivers remote prompts into the VISIBLE opencode TUI via a
+# running `opencode serve`, instead of spawning a headless `opencode run` nobody can see.
+# Disabled unless .ygg-bridge.json opts in twice; see the governance note in the module.
+$bridgeModule = Join-Path -Path $scriptDir -ChildPath "ygg-bridge-tui.ps1"
+if (Test-Path -LiteralPath $bridgeModule -PathType Leaf) {
+    . $bridgeModule
+} else {
+    Write-Host "  [WARN] ygg-bridge-tui.ps1 not found - interactive bridge unavailable." -ForegroundColor DarkYellow
+}
+
 # =====================================================================
 # TOKEN RETRIEVAL - same pattern as ygg-listen.ps1
 # =====================================================================
@@ -123,6 +133,46 @@ function Write-MessageLog {
         Add-Content -Path $logFile -Value "`r`n$entry" -Encoding UTF8
     } else {
         Set-Content -Path $logFile -Value $entry -Encoding UTF8
+    }
+}
+
+function Write-ExecutionLog {
+    <#
+    .SYNOPSIS
+      Appends one line to logs/remote/execution-YYYY-MM-DD.md - the audit transcript for every
+      agent invocation made from the remote channel.
+    .DESCRIPTION
+      This used to be written inside a Start-Job scriptblock that referenced $agentPrompt
+      without passing it in ArgumentList. Job scriptblocks do not inherit caller scope, so the
+      variable was null, .Substring() threw, and every line recorded 'input=' empty -- the one
+      field that made the file an audit record. Writing it in caller scope removes that whole
+      class of bug, and both delivery paths now log identically.
+    #>
+    param(
+        [string]$Agent,
+        [string]$Prompt,
+        [string]$Output,
+        [int]$ExitCode = 0,
+        [string]$Detail = ""
+    )
+
+    try {
+        if (-not (Test-Path -LiteralPath $remoteLogDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $remoteLogDir -Force | Out-Null
+        }
+        $logFile = Join-Path -Path $remoteLogDir -ChildPath "execution-$((Get-Date).ToString('yyyy-MM-dd')).md"
+
+        # One entry, one line, bounded length -- same rule as Write-MessageLog. Remote text with
+        # an embedded newline must not be able to forge a second audit entry.
+        $flat = (($Prompt -replace '[\r\n]+', ' ')).Trim()
+        if ($flat.Length -gt 80) { $flat = $flat.Substring(0, 80) }
+
+        $line = "$(Get-Date -Format 'HH:mm:ss') | @$Agent | exit=$ExitCode | input=$flat | output_len=$($Output.Length)"
+        if ($Detail) { $line += " | $Detail" }
+
+        Add-Content -Path $logFile -Value $line -Encoding UTF8
+    } catch {
+        Write-Host "  [WARN] execution log write failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
     }
 }
 
@@ -298,7 +348,7 @@ function Invoke-OpenCodeRun {
     # Passing it as an argument required escaping embedded quotes, and any argument-splitting
     # in this function then shredded the prompt at its spaces. Piping removes the whole class.
     # $AgentName is a bare token from a fixed allowlist, so it is safe to pass as an argument.
-    param([string]$AgentName, [string]$ChatId, [string]$PromptFile)
+    param([string]$AgentName, [string]$ChatId, [string]$PromptFile, [int]$Timeout = 120)
 
     try {
         # Run via PowerShell job to avoid deadlocks.
@@ -354,7 +404,7 @@ function Invoke-OpenCodeRun {
         # Wait for main job with timeout. Receive-Job WITHOUT 2>&1 [E77] -- merging the job's
         # error stream here is what put PowerShell error furniture (+ CategoryInfo, + FullyQualified
         # ErrorId, + PSComputerName) into the gardener's replies.
-        $job | Wait-Job -Timeout 120 | Out-Null
+        $job | Wait-Job -Timeout $Timeout | Out-Null
         $result = $job | Receive-Job
         $null = Wait-Job $typingJob -Timeout 3 2>$null
         Remove-Job $typingJob -ErrorAction SilentlyContinue
@@ -386,9 +436,32 @@ function Invoke-OpenCodeRun {
             return "The remote channel could not reach its designated read-only agent, so the request was refused rather than answered by an unrestricted one. This needs a local session to fix."
         }
 
-        # Strip ANSI, headers, collapse blanks
-        $output = $output -replace '\e\[[\d;]*[a-zA-Z]', ''
-        $output = $output -replace '(?m)^\s*>.*$', ''
+        $output = Format-RemoteOutput -Text $output
+    } catch {
+        $output = "Execution failed: $($_.Exception.Message)"
+    }
+
+    return $output.Trim()
+}
+
+function Format-RemoteOutput {
+    <#
+    .SYNOPSIS
+      Sanitises agent output for delivery to a phone.
+    .DESCRIPTION
+      Extracted from Invoke-OpenCodeRun so the interactive bridge gets the identical treatment.
+      When this lived inline, anything that did not go through `opencode run` bypassed every
+      one of these fixes -- so a second delivery path would have re-introduced the raw ANSI,
+      mojibake and literal markdown that [E73][E76] were opened for.
+    #>
+    param([string]$Text)
+
+    $output = $Text
+    if ($null -eq $output) { $output = '' }
+
+    # Strip ANSI, headers, collapse blanks
+    $output = $output -replace '\e\[[\d;]*[a-zA-Z]', ''
+    $output = $output -replace '(?m)^\s*>.*$', ''
 
         # ---- Strip opencode's tool-trace lines [E76] ----
         # The model's file reads were being relayed to the gardener as part of the answer:
@@ -441,12 +514,9 @@ function Invoke-OpenCodeRun {
         $output = $output -replace '\r?\n\s*\r?\n', "`r`n"
         $output = $output.Trim()
         
-        # If output is just "True" or empty, indicate timeout/failure
-        if ([string]::IsNullOrWhiteSpace($output) -or $output -eq "True") {
-            $output = "Command produced no output. The prompt may be too long or the model timed out."
-        }
-    } catch {
-        $output = "Execution failed: $($_.Exception.Message)"
+    # If output is just "True" or empty, indicate timeout/failure
+    if ([string]::IsNullOrWhiteSpace($output) -or $output -eq "True") {
+        $output = "Command produced no output. The prompt may be too long or the model timed out."
     }
 
     # Truncate for Telegram
@@ -483,7 +553,14 @@ function Process-Message {
     }
 
     # ---- Stage 1: Y10 check - ratification refusal ----
-    if (Test-RatificationAttempt -Text $Text) {
+    # Only @odin bypasses Y10, and only because that path writes to the task queue and is
+    # executed by a LOCAL session -- which is what Y10 actually requires. The bypass was
+    # previously '^@\w+\s+', which also exempted @ratatoskr; that path does NOT route through
+    # the queue, it goes straight to `opencode run`, so 'ratify X' addressed to @ratatoskr
+    # reached a model directly with Y10 disabled. A control that is skipped for every
+    # @-prefix is not scoped to the justification written beside it.
+    $bypassY10 = $Text -match '^@odin\b'
+    if (-not $bypassY10 -and (Test-RatificationAttempt -Text $Text)) {
         Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "blocked-y10"
         $script:ratificationBlocked++
         $script:lastActivity = Get-Timestamp
@@ -502,6 +579,46 @@ function Process-Message {
             Send-TelegramMessage -ChatId $ChatId -Text "Embedded instructions detected and refused. Content treated as untrusted per Y04."
             return
         }
+    }
+
+    # ---- Execution rate limiter (separate from Q&A) ----
+    if (-not $script:execRateTracker) { $script:execRateTracker = @{} }
+    $execRate = $script:execRateTracker[$ChatId]
+    if (-not $execRate) { $execRate = @{ lastExecution = $null; hourlyCount = 0; dailyCount = 0; hourlyWindow = (Get-Date); dailyWindow = (Get-Date) } }
+
+    # Only check rate limits if this is an @odin execution
+    if ($Text -match '^@odin\b') {
+        $now = Get-Date
+
+        # Reset hourly counter if window expired
+        if ($now -gt $execRate.hourlyWindow.AddHours(1)) { $execRate.hourlyCount = 0; $execRate.hourlyWindow = $now }
+        # Reset daily counter if window expired
+        if ($now -gt $execRate.dailyWindow.AddDays(1)) { $execRate.dailyCount = 0; $execRate.dailyWindow = $now }
+
+        # Check per-execution cooldown
+        if ($execRate.lastExecution -and ($now -lt $execRate.lastExecution.AddSeconds(120))) {
+            $wait = [math]::Round(($execRate.lastExecution.AddSeconds(120) - $now).TotalSeconds)
+            Send-TelegramMessage -ChatId $ChatId -Text "Please wait $wait seconds between execution requests."
+            return
+        }
+
+        # Check hourly cap
+        if ($execRate.hourlyCount -ge 5) {
+            Send-TelegramMessage -ChatId $ChatId -Text "Execution limit reached (5/hour). Try again later."
+            return
+        }
+
+        # Check daily cap
+        if ($execRate.dailyCount -ge 20) {
+            Send-TelegramMessage -ChatId $ChatId -Text "Daily execution limit reached (20/day). Resets at midnight."
+            return
+        }
+
+        # Update counters
+        $execRate.lastExecution = $now
+        $execRate.hourlyCount++
+        $execRate.dailyCount++
+        $script:execRateTracker[$ChatId] = $execRate
     }
 
     # ---- Stage 3: Remote execution ----
@@ -618,30 +735,116 @@ function Process-Message {
         $agentPrompt = $matches[2].Trim()
 
         # Security: restrict to read-only agents (Yggdrasil rule -- never builder/deployment)
-        $allowedAgents = @("ratatoskr")  # primary-mode + read-only only [E75]
+        $allowedAgents = @("ratatoskr", "odin")  # ratatoskr for Q&A, odin for execution [Gate 4]
         if ($agentName -notin $allowedAgents) {
-            $errMsg = "Agent '@$agentName' is not available remotely. The remote channel serves one agent, ratatoskr, which is read-only. The roster agents (skuld, var, huginn, kvasir and the rest) are subagents - opencode cannot start them directly, and naming one silently falls back to an unrestricted default. Use a local session for those."
+            $errMsg = "Agent '@$agentName' is not available remotely. The remote channel serves two agents: ratatoskr (read-only Q&A) and odin (execution). The roster agents (skuld, var, huginn, kvasir and the rest) are subagents - opencode cannot start them directly, and naming one silently falls back to an unrestricted default. Use a local session for those."
             Send-TelegramMessage -ChatId $ChatId -Text $errMsg
             Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "agent-restricted" -ResponseText $errMsg
             return
         }
 
         Write-Host "  Invoking agent @$agentName from $ChatId" -ForegroundColor DarkCyan
-        # Escape embedded double-quotes for the -p argument
         # Prompt goes via file, not -p. No quote escaping, no splitting hazard. [E74]
         $agentPromptFile = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "ygg-prompt-$(Get-Random).txt"
-        $agentPrompt | Out-File -FilePath $agentPromptFile -Encoding UTF8 -Force
-        $output = Invoke-OpenCodeRun -AgentName $agentName -ChatId $ChatId -PromptFile $agentPromptFile
+
+        # ---- Interactive bridge first, headless second ----
+        # The task-queue handoff that used to live here has been removed. It wrote
+        # work\task-queue.md and waited 300s for a result file, but NOTHING read that queue:
+        # ygg-check-queue.ps1 was reachable only by a human typing `ygg check-queue`. No hook,
+        # no scheduled task, no watcher, no call from this daemon. Unattended, every @odin
+        # request timed out by construction. Replaced by the bridge, which delivers the prompt
+        # into the running TUI and reads the answer back over HTTP.
+        $output      = $null
+        $bridgeStage = $null
+        $bridgeCfg   = Get-BridgeConfig -Root $yggRoot
+
+        if (Test-BridgeEnabled -Config $bridgeCfg) {
+            Write-Host "  Routing @$agentName through the interactive bridge" -ForegroundColor DarkCyan
+            $bridgeResult = Invoke-TuiBridge -Config $bridgeCfg -Root $yggRoot -Text $agentPrompt
+
+            if ($bridgeResult.Ok) {
+                $output      = Format-RemoteOutput -Text $bridgeResult.Text
+                $bridgeStage = "bridge"
+                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
+                    -ExitCode 0 -Detail "session=$($bridgeResult.SessionId)"
+            }
+            elseif ($bridgeResult.Reason -eq 'reply-timeout') {
+                # The prompt DID reach the terminal and may still be running. Do NOT fall back to
+                # the headless path here: that would run the same instruction a second time.
+                $output      = "Sent to the session, but no answer within $($bridgeCfg.replyTimeoutSeconds)s. It may still be working - check the terminal."
+                $bridgeStage = "bridge-timeout"
+                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
+                    -ExitCode 1 -Detail "session=$($bridgeResult.SessionId) reply-timeout"
+            }
+            elseif ($bridgeResult.Reason -eq 'delivery-unconfirmed') {
+                # The /tui/ POSTs were accepted but no session shows the prompt - most likely no
+                # TUI is attached. Also NOT a fallback case: the submit was accepted, so running
+                # it headlessly risks executing the same instruction twice.
+                $output      = "Submitted to the terminal, but no session shows it. Check that a TUI is attached (opencode attach). Not retried, to avoid running it twice."
+                $bridgeStage = "bridge-unconfirmed"
+                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
+                    -ExitCode 1 -Detail "delivery-unconfirmed"
+            }
+            else {
+                Write-Host "  Bridge unavailable ($($bridgeResult.Reason)); falling back to headless." -ForegroundColor DarkYellow
+            }
+        }
+
+        if ($null -eq $output) {
+            # Headless fallback. Pinned to an explicit agent and fails closed if the flag does
+            # not bind [E75], so remote text still cannot reach the host default agent.
+            $agentPrompt | Out-File -FilePath $agentPromptFile -Encoding UTF8 -Force
+            $output = Invoke-OpenCodeRun -AgentName $agentName -ChatId $ChatId -PromptFile $agentPromptFile
+            $bridgeStage = "headless"
+            Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output -ExitCode 0
+        }
+
         if (Test-Path $agentPromptFile) { Remove-Item $agentPromptFile -Force -ErrorAction SilentlyContinue }
-        $stageTag = "agent-$agentName"
+        $stageTag = "agent-$agentName-$bridgeStage"
     } else {
         # === General prompt with project context ===
         Write-Host "  Processing general prompt from $ChatId" -ForegroundColor DarkCyan
-        
+
+        # ---- Interactive bridge, if enabled ----
+        # When the prompt joins the real TUI session, the session itself holds the history, so
+        # none of the context assembly below is needed -- and the synthetic
+        # "[Conversation so far:]" replay must NOT be sent. That replay is a reconstruction from
+        # $script:conversationHistory with assistant turns truncated to 200 characters; pasting
+        # it into a session that already remembers the exchange would show the gardener a
+        # mangled copy of their own conversation inside their own terminal.
+        $bridgeCfgGen = Get-BridgeConfig -Root $yggRoot
+        if (Test-BridgeEnabled -Config $bridgeCfgGen) {
+            $genResult = Invoke-TuiBridge -Config $bridgeCfgGen -Root $yggRoot -Text $Text
+            if ($genResult.Ok) {
+                $output = Format-RemoteOutput -Text $genResult.Text
+                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $output `
+                    -ExitCode 0 -Detail "session=$($genResult.SessionId)"
+                Send-TelegramMessage -ChatId $ChatId -Text $output
+                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge" -ResponseText $output
+                return
+            }
+            if ($genResult.Reason -eq 'reply-timeout') {
+                $msg = "Sent to the session, but no answer within $($bridgeCfgGen.replyTimeoutSeconds)s. It may still be working - check the terminal."
+                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $msg -ExitCode 1 -Detail "reply-timeout"
+                Send-TelegramMessage -ChatId $ChatId -Text $msg
+                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge-timeout" -ResponseText $msg
+                return
+            }
+            if ($genResult.Reason -eq 'delivery-unconfirmed') {
+                # Same reasoning as the @-path: accepted submit, unconfirmed landing, no retry.
+                $msg = "Submitted to the terminal, but no session shows it. Check that a TUI is attached (opencode attach). Not retried, to avoid running it twice."
+                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $msg -ExitCode 1 -Detail "delivery-unconfirmed"
+                Send-TelegramMessage -ChatId $ChatId -Text $msg
+                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge-unconfirmed" -ResponseText $msg
+                return
+            }
+            Write-Host "  Bridge unavailable ($($genResult.Reason)); falling back to headless." -ForegroundColor DarkYellow
+        }
+
         # Build project context + conversation history
         $contextLines = @()
         $contextLines += "[Project: Yggdrasil governed companion seed]"
-        
+
         # Read SLICES.md for phase status
         $slicesPath = Join-Path -Path $scriptDir -ChildPath "..\..\roadmap\SLICES.md"
         $unitPath = $null

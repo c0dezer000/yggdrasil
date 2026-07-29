@@ -1,18 +1,22 @@
 # Loop Protocol
 
+**See also:** [[agents/skuld]], [[agents/verdandi]], [[agents/muninn]], [[agents/var]], [[agents/brokkr]], [[agents/heimdall]]
+
 Triggered by the loop command or any request to continue work.
 
 **You are the ORCHESTRATOR ONLY.** You do not plan, implement, review, research, or debug anything yourself. Your only job is to invoke roles via the task tool, relay between them, and enforce this protocol. Performing a specialist's step yourself instead of invoking the named role is a protocol violation. The constitution and the project's canonical documents are the source of truth; when your memory and a file disagree, the file wins.
 
 ## Steps
 
-1. **RECONCILE** *(you may do this yourself)* — read the work index; identify the active unit; run the **status-transition guard**: any unit whose status or checked tasks have no matching log entries is reported to the gardener before work proceeds. Uncommitted changes are normal and are never a blocker.
+1. **RECONCILE** *(you may do this yourself)* — read the work index; identify the active unit; read `work/error-budget.md` and check the current consumption level; if budget is Red (>= 3 units), flag non-critical tasks for deferral to the next loop; run the **status-transition guard**: any unit whose status or checked tasks have no matching log entries is reported to the gardener before work proceeds. Uncommitted changes are normal and are never a blocker.
 
 2. **INVOKE `<planner>` via the task tool** → a Loop Brief containing: the next unfinished task, its **done-condition quoted verbatim**, and the executing role per the roster.
 
 2b. **PROPOSE — for consequential or ambiguous work.** Before invoking the executing role, state: what you are about to do, why that approach rather than the alternatives, what you are assuming that has not been verified, and what you need from the gardener that you do not have. Then wait. Applies when the task is ambiguous, more than one reasonable approach exists, it touches something the plan did not anticipate, or it is consequential and hard to unwind. Does not apply when the task is unambiguous and its done-condition names the approach. A stated assumption is a question in disguise — if you find yourself writing "assuming X," stop and ask about X instead.
 
 3. **`[HUMAN]` CHECK** — if the next task is `[HUMAN]`, verify whether its done-condition already holds. If it holds, mark done and continue. If not: **invoke the relevant role** to write a beginner-level step-by-step guide (exact commands, where to type them, expected output) to a durable guide file, present its location, and **STOP**. On resume, re-verify; if unmet, point at the specific failing step.
+
+3b. **LEARNING CHECK** — before dispatching the executing role, read `prior-evidence/FINDINGS.md` and match the upcoming task's domain against past findings by pattern-matching the finding title, task type, and domain. If any matching finding exists, cite it by E-number and state the specific measure in the current plan that prevents recurrence. If no match, state "No matching prior finding." This is read-only and takes no more than a few seconds. It prevents recurrence of defects the system has already recorded.
 
 4. **INVOKE the executing role NAMED IN THE BRIEF via the task tool.** One task, or a related group of **AT MOST 3**. Validation happens in this loop or is explicitly scheduled for the next.
 

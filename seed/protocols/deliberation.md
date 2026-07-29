@@ -1,5 +1,7 @@
 # Deliberation Workspace
 
+**See also:** [[agents/verdandi]], [[agents/muninn]]
+
 Structured exchange between roles, held in files rather than relayed through the orchestrator.
 
 **Why this exists.** Host subagents are stateless request/response. A seat's output returns to the
@@ -23,10 +25,11 @@ architecturally.
 
 ```
 deliberation/<topic-slug>/
+  00-pre-mortem.md          pre-mortem entries from every seated role — see Rule 9
   00-question.md            the question, constraints, what a decision must produce
-  01-<role>-position.md     first seat. Reads 00 only.
-  02-<role>-critique.md     reads 00 and 01
-  03-<role>-<angle>.md      reads 00, 01, 02
+  01-<role>-position.md     first seat. Reads 00-pre-mortem and 00-question only.
+  02-<role>-critique.md     reads 00-pre-mortem, 00-question, and 01
+  03-<role>-<angle>.md      reads 00-pre-mortem, 00-question, 01, 02
   04-<role>-<angle>.md      reads everything prior
   05-<role>-response.md     the first seat answers its critics
   memo.md                   synthesis, written from the record
@@ -75,8 +78,26 @@ rather than correcting them. Before dispatching any seat, check that the role as
 holds `Write`; a protocol step that assigns a file to a read-only seat is unexecutable and must name
 its scribe `[E54]`.
 
+**7b. The memo includes a Bayesian confidence summary.** After synthesising the positions, Verdandi
+produces a paragraph of the form:
+> Seats that held position X in prior deliberations on similar topics: [count].
+> Those whose predictions were borne out: [count].
+> Current alignment: [qualitative assessment].
+
+This summary draws on `seed/memory/relationships.md` for prior-position data and on the current
+workspace for alignment. Where a seat has no prior deliberation on the topic, it is stated rather
+than assumed neutral. Confidence is not a numeric probability — it is a qualitative assessment of
+how much the record supports the current position across multiple deliberations.
+
 **8. The directory is the evidence.** A deliberation without its directory did not happen. Memos
 without a workspace behind them are assertions.
+
+**9. Pre-mortem before position.** After the question is set and before any seat writes its
+position or critique, every seated role contributes to `00-pre-mortem.md` under the heading
+*"Assume this plan has failed. What went wrong?"* naming the most likely failure mode from its
+perspective. These entries are written before the main position so that failure modes are legible
+before anyone is invested in defending a plan. Every subsequent seat reads `00-pre-mortem.md`
+alongside `00-question.md`. The memo cites the pre-mortem entries.
 
 ---
 
@@ -102,11 +123,17 @@ without a workspace behind them are assertions.
 
 ## Concessions
 <what the other seats got right>
+
+## Prior positions and updates
+<Seat's position in prior deliberations on related topics, cited from relationships.md>
+<What has changed since then>
+<What evidence would update the current position>
 ```
 
 **"What would change my mind" is not decoration.** A position that cannot state its own falsifier
-is a preference. Seats that never concede anything across multiple deliberations are flagged in
-the relationship record below.
+is a preference. The **"Prior positions and updates"** section above grounds each seat's current
+position in its historical record from `relationships.md`. Seats that never concede anything across
+multiple deliberations are flagged in the relationship record below.
 
 ---
 
