@@ -1,5 +1,29 @@
 # Guide — Verification of the remote execution bridge
 
+> ## ⚠ SUPERSEDED — describes behaviour that no longer exists
+>
+> This guide documents the `@odin` **task-queue** path, which has been removed. It also
+> described that path inaccurately even while it existed:
+>
+> - Step 3 expects the acknowledgement `"Received. Processing..."`. The code sent
+>   `"Task queued. Executing in session..."`.
+> - The timeout note attributes the 300 s ceiling to `Invoke-OpenCodeRun`. It was in the
+>   result-poll job, not that function.
+> - It cites "line 698 of ygg-daemon.ps1" for the execution log. That was line 718, and the
+>   log line it produced recorded `input=` empty because of a variable-scope bug.
+> - The rate limits in Step 7 (120 s / 5 per hour / 20 per day) did not exist in the committed
+>   code at the time this guide was written.
+>
+> **The queue this guide verifies never had an automated consumer.** `ygg check-queue` was its
+> only reader and ran only when a human typed it, so unattended `@odin` requests always timed
+> out.
+>
+> **For running the current remote path, see `guides/interactive-bridge.md`.**
+>
+> Kept for historical reference and because Steps 5, 8 and 9 (durable-file, injection and
+> protected-file checks) remain useful as safety assertions against *any* remote execution
+> path, including the new one.
+
 **Audience:** the gardener. **Runs on:** this machine, in PowerShell.
 **Covers:** the `@odin` execution path — remote write-capable agent invocation via Telegram.
 **Prerequisites:** the daemon must be running and the Telegram channel must be operational

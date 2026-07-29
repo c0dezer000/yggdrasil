@@ -49,7 +49,37 @@ remote messages keep going down the headless, agent-pinned path.
 
 ---
 
+## Before you start — maturity of this path
+
+This is **new and only partly verified.** Be honest with yourself about that before wiring it
+into anything you depend on.
+
+| Behaviour | State |
+|---|---|
+| Server starts; `ygg serve` works | Validated |
+| Bridge stays off by default; malformed config stays off | Validated |
+| Falls back to the headless path when the server is down | Validated |
+| Session id persists and round-trips | Validated |
+| **`/tui/append-prompt` renders in an attached TUI** | **Unverified — the core unknown** |
+| `/api/session/active` populates when a TUI is attached | **Unverified** |
+| Reply detection (`time.completed`) fires | **Unverified** |
+
+Everything testable without invoking a model passes. The three unverified items are the three
+that matter, and the likeliest first failure is **reply detection** — the prompt reaches the
+terminal and is answered there, but Telegram reports a timeout because the read-back never
+matches. If that happens, check the terminal: a visible answer means the bridge worked and only
+the read-back is wrong.
+
+---
+
 ## Setup
+
+### 0. Rate limits will bite
+
+`@odin` carries a **120 s cooldown, 5/hour, 20/day** (`ygg-daemon.ps1`, execution rate
+limiter). Iterative testing exhausts the hourly cap in about ten minutes and you will start
+seeing *"Please wait N seconds between execution requests."* Consider raising those limits for
+a test session and restoring them afterwards.
 
 ### 1. Start the shared server
 
@@ -123,11 +153,46 @@ The bridge picks the target session in this order:
 
 1. the session an attached TUI has in the foreground (`GET /api/session/active`)
 2. the session remembered in `work/remote-session.json`
-3. the most recently updated session on the server
-4. a new session
+3. a **new** session titled "Remote channel"
 
-(1) is what puts the message in the conversation you are watching. The rest are fallbacks so
-the channel still works with no TUI attached.
+(1) is what puts the message in the conversation you are watching.
+
+There is deliberately **no** "fall back to the most recently updated session" step. It sounds
+helpful and is not: on a first run it resolves to whatever was touched last — during testing
+that was an unrelated month-old conversation — and `/tui/select-session` would then pull your
+terminal into it and post a remote message there. Creating a session is predictable; adopting
+an arbitrary one is not.
+
+**Expect this on first run:** if `/api/session/active` comes back empty, you get a fresh
+"Remote channel" session rather than the conversation you were already in. The id is then
+remembered, so it stays consistent afterwards. To target a specific conversation, navigate the
+TUI to it and send again — priority 1 should latch onto it.
+
+---
+
+## Which terminal receives the prompt
+
+Only a terminal started with `opencode attach`. Nothing else can.
+
+| Terminal | Receives it? |
+|---|---|
+| A Claude Code session | **Never.** Different program; it is not in the HTTP path at all. |
+| A bare `opencode` TUI (no `attach`) | **No.** It owns no socket and is unreachable by design — this is the disconnected terminal the audit was about. |
+| `opencode attach http://127.0.0.1:4096` | **Yes.** The only thing that qualifies. |
+
+**Attach exactly one TUI.** `/tui/append-prompt` takes `{text}` and `/tui/select-session`
+takes `{sessionID}` — **neither accepts a client identifier**. The API models it as *the* TUI,
+singular, so there is no way to address a specific terminal. With two attached, the behaviour
+is undefined by the spec: it either broadcasts or lands on whichever the server considers
+current. Attach one and the question does not arise.
+
+The same applies to servers — do not run two. `ygg serve` refuses to bind a port that is
+already listening, which prevents your TUI being on one server while the daemon talks to
+another.
+
+Note: `opencode-go` is the **model provider prefix** in a model id
+(`opencode-go/deepseek-v4-flash`), not a separate terminal or application. It has no bearing on
+which window receives anything.
 
 ---
 
@@ -163,7 +228,28 @@ A `stage: agent-odin-bridge` line in `logs/remote/listener-*.md` means the bridg
 
 ---
 
+## Known limitations
+
+**The bridge path is synchronous.** `Invoke-TuiBridge` runs inline in `Process-Message`, so a
+long-running task blocks *all* Telegram polling for up to `replyTimeoutSeconds`. The removed
+`@odin` queue path was asynchronous (`Start-Job`), so this is a regression on that one axis.
+A large request — "create a React dashboard" — will trip it. Fixing it means rebuilding the
+async result-delivery path, which is a deliberate change rather than a patch.
+
+**The agent is whatever the TUI has selected.** This is the waiver described at the top. If
+your TUI is sitting on odin, remote Telegram text drives odin with full tools. The headless
+path's `--agent` pinning does not apply here and cannot.
+
+**No cancellation.** Once submitted, a remote prompt runs to completion. Stop it in the
+terminal, not from the phone.
+
+---
+
 ## Rollback
 
 Set `"enabled": false` in `.ygg-bridge.json` and restart the daemon. Everything returns to the
 headless, agent-pinned path. No other change is needed.
+
+Deeper rollback: `git revert` the bridge commit. The headless path was never removed — the
+bridge is strictly additive with a fallback, so reverting restores the prior behaviour minus
+the `@odin` task queue (which never worked unattended and is not worth restoring).
