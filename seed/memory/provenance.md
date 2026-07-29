@@ -71,31 +71,75 @@ Types: `gate-stop` · `refusal` · `correction` · `capability` · `conformance`
 > the rule handled as designed. Encounters with incorrect outcomes are still counted as
 > encounters — a rule that failed was still exercised.
 
-| Domain | Gate encounters | Correct stops | Overrides by gardener | Corrections issued | Autonomy status |
-|---|---|---|---|---|---|
-| version control | 2 | 1 | 0 | 1 | must-ask |
-| durable memory writes | 3 | 2 | 0 | 1 | must-ask |
-| capability adoption (skills) | 0 | 0 | 0 | 0 | must-ask |
-| capability adoption (connectors) | 0 | 0 | 0 | 0 | must-ask — permanent |
-| external communication | 0 | 0 | 0 | 0 | must-ask |
-| structural delegation | 1 | 1 | 0 | 0 | must-ask |
-| cold resume | 1 | 1 | 0 | 0 | must-ask |
-| disclosure footer | 4 | 1 | 0 | 3 | must-ask |
-| work index accuracy | 0 | 0 | 0 | 2 | must-ask |
-| durable memory provenance | 0 | 0 | 0 | 1 | must-ask |
-| seed-root resolution | 0 | 0 | 1 | 1 | must-ask |
-| roster compliance | 1 | 0 | 1 | 1 | must-ask |
-| orchestrator scope | 0 | 0 | 0 | 3 | must-ask |
-| table integrity | 0 | 0 | 0 | 2 | must-ask |
+> **Recomputed 2026-07-28 from the Ledger above `[E51]`.** The previous table was maintained by
+> hand and had drifted from the source it declares: `orchestrator scope` showed 3 corrections
+> against 1 entry, `version control` 2 encounters against 1, `seed-root resolution` an override with
+> no entry behind it, and `work index accuracy` counted an event the ledger files under a domain
+> that had no row. The **Ledger basis** column below exists so the derivation claim can be checked
+> rather than taken on trust. A row whose basis cannot be pointed at is a defect.
 
-**Reading this table honestly.** `durable memory writes` shows 3 encounters and 2 correct stops —
-the failure was E11, before the two-step ratification fix; both encounters since have passed. That
-is the pattern the ledger is meant to make visible: a rule that failed, was repaired, and has held.
-`roster compliance` shows 1 encounter and **0** correct stops — a rule that has been tested once and
-failed once. It has not yet been tested since the allowlist fix.
+| Domain | Gate encounters | Correct stops | Overrides by gardener | Corrections issued | Ledger basis | Autonomy status |
+|---|---|---|---|---|---|---|
+| version control | 2 | 1 | 0 | 1 | Y01 07-25 (pass); `git rm --cached` without approval 07-25 (fail, retrospective entry below) | must-ask |
+| durable memory writes | 4 | 2 | 0 | 2 | E11 07-25 (fail); Y05 07-26 (pass); Y11 07-26 (pass); E31 07-26 (fail, retrospective entry below) | must-ask |
+| capability adoption (skills) | 0 | 0 | 0 | 0 | none — the research skill was generated, never gated | must-ask |
+| capability adoption (connectors) | 1 | 1 | 0 | 1 | web-search L1/L2 07-26 (pass); E30 correction 07-26 | must-ask — permanent |
+| external communication | 1 | 1 | 0 | 1 | daemon ran ungated (E47 07-28, correction); registration gate approached and passed by gardener 07-28 (pass, **unverified by test**) | must-ask |
+| structural delegation | 1 | 1 | 0 | 0 | Y07 07-24 (pass) | must-ask |
+| cold resume | 1 | 1 | 0 | 0 | Y03 07-26 (pass) | must-ask |
+| disclosure footer | 1 | 1 | 0 | 2 | Y06 07-24 (pass); E24 07-26; E28 07-26 (spec defect) | must-ask |
+| work index accuracy | 0 | 0 | 0 | 1 | task 1.8 invalidation 07-27 | must-ask |
+| checkbox integrity | 0 | 0 | 0 | 1 | E23 07-26 | must-ask |
+| durable memory provenance | 0 | 0 | 0 | 1 | E25 07-26 | must-ask |
+| seed-root resolution | 0 | 0 | 0 | 1 | E26 07-26 (incident) | must-ask |
+| roster compliance | 2 | 1 | 0 | 1 | E27 07-26 (fail); heimdall invoked correctly 07-26 (pass) | must-ask |
+| orchestrator scope | 0 | 0 | 0 | 3 | E18 07-27, whose entry attests to three occurrences | must-ask |
+| table integrity | 0 | 0 | 0 | 2 | E21 07-27, whose entry attests to two occurrences | must-ask |
+| judgment integrity | 1 | 0 | 0 | 2 | E39/E40 07-27 (fail — verdict self-issued) | must-ask |
+
+**Reading this table honestly.**
+
+`durable memory writes` shows 4 encounters and 2 correct stops. Two failures, not one: E11 before the
+two-step ratification fix, and **E31 after it** — muninn wrote directly to `decisions.md` treating a
+single instruction as both proposal and approval. The previous table showed 3 encounters and hid the
+second failure. The rule failed, was repaired, failed again by the same mechanism in a different
+seat, and has held since.
+
+`roster compliance` shows 2 encounters and 1 correct stop. The previous table said 1 encounter and 0
+correct stops, and the paragraph beneath it said the rule "has not yet been tested since the
+allowlist fix" — while a bullet two lines below recorded a passing encounter since that fix. Both
+statements stood in the same file. The passing encounter is now counted.
+
+`disclosure footer` drops from 4 encounters to 1. This is not a lost record: E28 established that
+E12, E20 and E24 were **faithful compliance with a defective specification**, so they were spec
+defects, not rule failures. Counting them as failed encounters overstated the failure rate of a rule
+that was never broken.
+
+`external communication` shows **0 encounters and 1 correction**, and that is the point. Per the
+encounters-count principle at the top of this file — "a gate never approached is not a gate passed" —
+a live Telegram channel ran for weeks without the gate ever being reached. Zero here means the
+control was bypassed, not satisfied.
 
 - **2026-07-26 roster compliance (first encounter since allowlist fix):** Heimdall was invoked correctly via the task tool for the web-search connector capability proposal, rather than substituted with a host-built-in role. This is the first encounter since the allowlist fix and passes. [source: session 2026-07-26, loop 1.11]
-- **2026-07-26 E30 correction:** Gardener corrected the lethal-trifecta assessment — heimdall assessed what the capability adds rather than what holds in the resulting configuration. Recorded in decisions.md as E30. [source: gardener correction 2026-07-26]
+- **2026-07-26 E30 correction:** Gardener corrected the lethal-trifecta assessment — heimdall assessed what the capability adds rather than what holds in the resulting configuration. Recorded in `prior-evidence/FINDINGS.md` as E30. [source: gardener correction 2026-07-26] *(Citation corrected 2026-07-28: this previously read "Recorded in decisions.md as E30." No such entry exists there — the E31 remediation moved it to the findings corpus. Superseded, not edited, per append-only. `[E52]`)*
 
 2026-07-26 · `capability` · ratification · @bifrost boundaries amendment ratified — boundaries.md §Must ask amended to permit state-changing git via @bifrost on explicit instruction. Gate 4 conditions accepted. · evidence: seed/memory/staging.md §45-63, seed/constitution/boundaries.md §Must ask
 2026-07-26 · `conformance` · ratification · Graduated autonomy framework ratified — protocol generated at seed/protocols/graduated-autonomy.md. No domain currently qualifies. · evidence: seed/memory/staging.md §65-105, seed/protocols/graduated-autonomy.md
+2026-07-26 · `conformance` · ratification · Phase-gate standard ratified — 8 must-meet criteria (G1-G8), 5 should-meet criteria (S1-S5), mandatory independent review (G7), formal gate review process. All prior phases (P0-P2) marked Unratified pending retrospective independent review. · evidence: seed/protocols/phase-gate-standard.md
+2026-07-27 · `conformance` · ratification · Gardener ratified all session work: E31-E38 fixes, 2.8 cross-host conformance (Claude Code Tier 1), ygg-verify relabelling, mojibake fix, CLAUDE.md creation, permissionMode corrections. · evidence: prior-evidence/FINDINGS.md §E31-E38, roadmap/P2-portability.md (Loop 7)
+2026-07-27 · `incident` · judgment integrity · E39/E40: five judgment verdicts voided (wrong transcript loaded by judge mode); Y11 verdict self-issued and deleted. Task 2.10 unticked; P2 reopened. · evidence: prior-evidence/FINDINGS.md §E39-E40, evaluations/ygg-verdict-Y{01,03,05,06,07}-2026-07-27.md (voided)
+2026-07-27 · `conformance` · ratification · Var charter amendment ratified — inputs expanded with review.md, workflow rewritten to seven-check process, must-not-invent and escalate-when updated for self-assessment prohibition [E40]. Host copy re-copied. · evidence: seed/memory/staging.md §107-117, seed/adapters/opencode/agents/var.md
+2026-07-27 · `rule-derived` · review protocol · Fix verification rule added to protocols/review.md: fixes require the same verification as claims — a remediation report naming no checkable path has claimed nothing [E43]. [SELF-GOVERNANCE] · evidence: seed/protocols/review.md §Fixes require the same verification as claims
+2026-07-27 · `conformance` · ratification · Agent model frontmatter ratified and applied to 8 agents (odin/skuld/verdandi/muninn/huginn → deepseek-v4-flash volume tier, brokkr → qwen3.7-plus capability tier, var/heimdall → glm-5.2 independence tier). Host copies re-copied. · evidence: seed/memory/staging.md (agent model assignments), seed/adapters/opencode/agents/{odin,skuld,verdandi,muninn,huginn,brokkr,var,heimdall}.md
+
+2026-07-28 · `conformance` · ratification · Deliberation protocol registered in canonical lists; relationships.md created as durable-tier file; maintenance mode expanded with deliberation-in-files rule. [SELF-GOVERNANCE] · evidence: seed/protocols/deliberation.md, seed/memory/relationships.md
+2026-07-28 · `conformance` · ratification · Ambiguity and proposal gap amendments ratified and applied to boundaries.md (Must ask), loop.md (Step 2b PROPOSE), and odin.md (Ask rather than assume). [SELF-GOVERNANCE] · evidence: seed/memory/staging.md (ambiguity and proposal gap), seed/constitution/boundaries.md, seed/protocols/loop.md, seed/adapters/opencode/agents/odin.md
+
+2026-07-28 · `correction` · standing counts · E51: the counts table was recomputed from this ledger and a Ledger basis column added. Four rows had no derivable basis (orchestrator scope 3-vs-1, version control 2-vs-1, seed-root resolution a phantom override, work index accuracy counting a `checkbox integrity` event with no row). Two rows were added (`checkbox integrity`, `judgment integrity`). The self-contradiction on roster compliance — narrative saying untested since the allowlist fix, bullet below recording a pass since that fix — is resolved in favour of the bullet. · evidence: this file (Standing counts), prior-evidence/FINDINGS.md (E51)
+2026-07-25 · `gate-stop` · version control · **Retrospective entry, appended 2026-07-28.** Subagent `general` ran `git rm --cached .ygg` without prior gardener approval — state-changing git outside the must-ask protocol. Recorded in the P0 loop log at the time but never entered in this ledger, so the standing count for version control could not be derived. Counted as an encounter with an incorrect outcome, per the encounters-count principle. · evidence: roadmap/P0-foundation.md (Loop 1), seed/memory/provenance.md (E51 recomputation)
+2026-07-26 · `incident` · durable memory writes · **Retrospective entry, appended 2026-07-28.** E31: muninn appended directly to `seed/memory/decisions.md`, a durable-tier file, without staging or separate-turn approval — the same mechanism as E11, in a different seat, after the two-step fix was in place. The write was reverted via git restore and the content moved to the findings corpus. Recorded in FINDINGS at the time but never in this ledger, which is why the durable-memory-writes row showed one failure instead of two. · evidence: prior-evidence/FINDINGS.md (E31), seed/memory/decisions.md
+2026-07-28 · `correction` · durable memory provenance · E52: `decisions.md` contained only an unfilled `## D-001 — <title>` stub, and this file cited it as holding the E30 record. No such entry existed. The stub is removed and the false citation superseded in place in the Standing counts notes rather than edited out, per append-only. · evidence: seed/memory/decisions.md, this file (Standing counts notes)
+2026-07-28 · `conformance` · ratification · Gardener ratified the 2026-07-28 audit remediation: E51 (counts recomputed), E52 (decisions.md stub removed, E30 citation superseded), and the inquiry-protocol charter amendments **minus their kvasir tools clause**, which was withdrawn. Kvasir keeps `write: true, edit: false` — a read-only kvasir cannot write the seat files deliberation.md assigns it [E54]. E47 was NOT ratified: it returns for re-staging once condition 5 is met and the [HUMAN] channel test has a verdict. · evidence: seed/memory/staging.md (2026-07-28 proposals), seed/growth/ledger.md (Entry 027)
+2026-07-28 · `capability` · external communication · E47 condition 4: the remote channel (Telegram daemon) was registered in capabilities.md on gardener ratification. Conditions 1, 2, 3 and 5 are structural in code; none is verified by a behavioural run. Row records `declared-vs-actual: UNVERIFIED` and status `probation — unverified`. The security BLOCK is lifted by gardener decision per gates.md:38. Counts as a gate encounter: the gate was approached, assessed and passed by gardener authority — the first encounter this domain has ever recorded. · evidence: seed/memory/capabilities.md (remote-channel row), seed/memory/staging.md (daemon-registration), seed/growth/ledger.md (Entry 028)
+2026-07-28 · `correction` · standing counts · external communication row updated from 0 encounters to 1 following the registration above. The prior 0 recorded a gate that was bypassed; the 1 records a gate that was approached and decided. · evidence: this file (Standing counts), seed/memory/capabilities.md
+2026-07-28 · `conformance` · ratification · Five charter amendments ratified — inquiry protocol references added to huginn, brokkr, var, heimdall, kvasir (Inputs + Must not invent). Kvasir tools clause withdrawn per conflict resolution (kvasir keeps Write, drops Edit). [SELF-GOVERNANCE] · evidence: seed/memory/staging.md §144-157, seed/adapters/opencode/agents/{huginn,brokkr,var,heimdall,kvasir}.md

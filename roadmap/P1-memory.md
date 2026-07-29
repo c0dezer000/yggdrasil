@@ -57,6 +57,13 @@ project) and P2 build tasks are actionable now.
 - [x] 1.8 Verify budget under load — Done when: bootstrap with populated memory is measured and
       recorded as within the stated token budget, with the measurement written to
       `evaluations/context-budget-<date>.md`.
+      *(Re-verified 2026-07-28 `[E53]`. The Loop 8 measurement was voided — it read the stray
+      `profile.md` — and this checkbox was recorded as unticked in the Invalidation note below and in
+      `provenance.md`, yet stood ticked with no loop entry recording a re-measurement. The artifact
+      does exist: `evaluations/context-budget-2026-07-27.md` measures 1,733 tokens (÷4) / 1,981
+      (÷3.5) against the 2,000-token local budget — **within budget by 19 tokens at the upper bound**
+      `[E29]`. The tick is therefore correct; what was missing was the record justifying it. It is
+      recorded here.)*
 
 ### Group C — Capability
 
@@ -65,10 +72,16 @@ project) and P2 build tasks are actionable now.
       and ships three assertions. **Generate only on demand** — a role added before a task needs it
       degrades routing for every existing role. Roster cap ~13.
 
-- [x] 1.10 Generate the research skill — Done when: it exists in the spec-compliant format with
+- [ ] 1.10 Generate the research skill — Done when: it exists in the spec-compliant format with
       three-tier disclosure, states the extraction-note discipline (claim · source · date), and
       **its anti-confabulation rule is enforced by a conformance assertion** — a research output
       containing an uncited factual claim fails.
+      *(Unticked 2026-07-28 `[E69]`. The skill exists and the first two clauses are met. The third is
+      not: no assertion in `seed/conformance/` references confabulation or uncited claims — the
+      suite is Y01–Y16 and none covers this. **Owed: one assertion** (next free ID Y17) asserting
+      that a research output containing an uncited factual claim fails. Not written here — writing
+      the artifact in order to close the finding that reported it missing is how a tick becomes
+      evidence for itself.)*
 
 - [x] 1.11 **[HUMAN]** Approve one read-only connector — Done when: a proposal exists with
       provenance and a security checklist, the gardener has approved it, and it is recorded in

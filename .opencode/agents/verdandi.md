@@ -1,6 +1,7 @@
 ---
 description: Verdandi — loop controller. Invoke at the end of every loop to decide WHETHER the loop continues, the unit completes, a unit reopens, or escalation is required. Read-only. NOT for choosing the next task — that is skuld.
 mode: subagent
+model: opencode-go/deepseek-v4-flash
 tools:
   read: true
   write: false

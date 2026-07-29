@@ -1,4 +1,4 @@
-# ygg generate — seed installation generator
+﻿# ygg generate — seed installation generator
 <#
 .SYNOPSIS
   Generates a working seed installation in the target directory based on
@@ -80,11 +80,30 @@ function Copy-Adapt {
     if ($Adapt) {
         $content = Get-Content -Path $Source -Raw -Encoding UTF8
         $adapted = & $Adapt $content
-        $adapted | Set-Content -Path $Destination -Encoding UTF8 -NoNewline
+        $ext = [System.IO.Path]::GetExtension($Destination).ToLower()
+        if ($ext -eq ".ps1") {
+            Write-FileWithEncoding -Path $Destination -Content $adapted -Type "ps1"
+        } elseif ($ext -eq ".json") {
+            Write-FileWithEncoding -Path $Destination -Content $adapted -Type "json"
+        } else {
+            Write-FileWithEncoding -Path $Destination -Content $adapted -Type "md"
+        }
     } else {
         Copy-Item -LiteralPath $Source -Destination $Destination -Force
     }
     Write-Host "  Copied: $Destination" -ForegroundColor Gray
+}
+
+# ---- Utility: write file with correct encoding ----
+function Write-FileWithEncoding {
+    param([string]$Path, [string]$Content, [string]$Type = "md")
+    if ($Type -eq "ps1") {
+        $utf8WithBom = New-Object System.Text.UTF8Encoding $true
+        [System.IO.File]::WriteAllText($Path, $Content, $utf8WithBom)
+    } else {
+        $utf8WithoutBom = New-Object System.Text.UTF8Encoding $false
+        [System.IO.File]::WriteAllText($Path, $Content, $utf8WithoutBom)
+    }
 }
 
 # ===================================================================
@@ -114,6 +133,18 @@ $dirs = @(
 
 foreach ($d in $dirs) {
     Ensure-Dir $d
+}
+
+# ---- Write notification config (no secrets, just channel type) ----
+if ($answers.notifications -and $answers.notifications -ne "skip") {
+    $notifConfig = @{
+        "channel" = $answers.notifications
+        "setupNote" = "Set the required environment variable to activate. See ygg-plant.json for details."
+    }
+    $notifConfigJson = $notifConfig | ConvertTo-Json
+    $notifConfigPath = Join-Path -Path $targetDotOpendir -ChildPath "notifications.json"
+    Write-FileWithEncoding -Path $notifConfigPath -Content $notifConfigJson -Type "json"
+    Write-Host "  Created: $notifConfigPath (channel: $($answers.notifications))" -ForegroundColor Gray
 }
 
 # ===================================================================
@@ -294,7 +325,7 @@ switch ($answers.qualityBar) {
                                                '- **Quality bar:** standard — production-quality. Tests, docs, validation, before-creation sequence.'
     }
 }
-$profileContent | Set-Content -Path $profileTemplatePath -Encoding UTF8 -NoNewline
+Write-FileWithEncoding -Path $profileTemplatePath -Content $profileContent -Type "md"
 Write-Host "  Adapted: project-profile-template.md (quality bar: $($answers.qualityBar))" -ForegroundColor Gray
 
 # ===================================================================
@@ -362,7 +393,7 @@ if ($answers.whoCommits -eq "gardener") {
 
 # Write generated odin.md to .opencode/agents/odin.md
 $generatedOdinPath = Join-Path -Path $targetDotOpendir -ChildPath "agents\odin.md"
-$odinContent | Set-Content -Path $generatedOdinPath -Encoding UTF8 -NoNewline
+Write-FileWithEncoding -Path $generatedOdinPath -Content $odinContent -Type "md"
 Write-Host "  Generated: $generatedOdinPath" -ForegroundColor Gray
 
 # ===================================================================
@@ -401,7 +432,7 @@ Write-Host ""
 Write-Host "─── Step 4: Generating .ygg pointer ───" -ForegroundColor Cyan
 
 $yggPointerPath = Join-Path -Path $TargetDirectory -ChildPath ".ygg"
-$TargetDirectory | Set-Content -Path $yggPointerPath -Encoding UTF8 -NoNewline
+Write-FileWithEncoding -Path $yggPointerPath -Content $TargetDirectory -Type "md"
 Write-Host "  Generated: $yggPointerPath → $TargetDirectory" -ForegroundColor Gray
 
 # ===================================================================
@@ -439,7 +470,7 @@ if ($answers.whoCommits -eq "companion-auto") {
 }
 
 $configJson = $config | ConvertTo-Json -Depth 10
-$configJson | Set-Content -Path $opencodeJsonPath -Encoding UTF8
+Write-FileWithEncoding -Path $opencodeJsonPath -Content $configJson -Type "json"
 Write-Host "  Generated: $opencodeJsonPath" -ForegroundColor Gray
 
 # ===================================================================
@@ -481,7 +512,7 @@ Thumbs.db
 .DS_Store
 "@
 }
-$gitignoreContent | Set-Content -Path $gitignorePath -Encoding UTF8
+Write-FileWithEncoding -Path $gitignorePath -Content $gitignoreContent -Type "md"
 Write-Host "  Generated: $gitignorePath" -ForegroundColor Gray
 
 # ===================================================================
@@ -507,7 +538,7 @@ The single file that answers "where does this project stand." Read at every boot
 **Rule:** a later unit's file is created when its predecessor closes, not in advance. Detail
 written ahead of evidence gets rewritten before it is used.
 "@
-$slicesContent | Set-Content -Path $slicesPath -Encoding UTF8
+Write-FileWithEncoding -Path $slicesPath -Content $slicesContent -Type "md"
 Write-Host "  Generated: $slicesPath" -ForegroundColor Gray
 
 # ===================================================================
@@ -720,6 +751,18 @@ try {
     Write-Host "  [ERROR] Conformance check failed: $_" -ForegroundColor Red
 } finally {
     Pop-Location
+}
+
+# ---- Run ygg verify if target has opencode ----
+if ($answers.host -eq "opencode") {
+    $verifyScript = Join-Path -Path $yggRoot -ChildPath "tools\ygg\ygg-verify.ps1"
+    if (Test-Path $verifyScript) {
+        Write-Host "  Running ygg verify..." -ForegroundColor Gray
+        & $verifyScript 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  [PASS] ygg verify: all static checks pass" -ForegroundColor Green
+        }
+    }
 }
 
 # ===================================================================

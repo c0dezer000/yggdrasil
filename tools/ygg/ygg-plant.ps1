@@ -1,4 +1,4 @@
-# ygg plant — interactive seed installation wizard
+﻿# ygg plant — interactive seed installation wizard
 <#
 .SYNOPSIS
   Interactive wizard that asks seven questions and generates a working seed installation.
@@ -56,7 +56,7 @@ Write-Host @"
 ╔══════════════════════════════════════════════════╗
 ║          ygg plant — seed installation           ║
 ║                                                  ║
-║  Seven questions about consequences, not trivia. ║
+║  Eight questions about consequences, not trivia. ║
 ║  Each answer writes a behavioural rule, not an   ║
 ║  attribute.                                      ║
 ╚══════════════════════════════════════════════════╝
@@ -233,6 +233,63 @@ $qualityLabels = @{ "mvp" = "MVP — minimum viable"; "standard" = "Standard —
 Write-Host "  → $($qualityLabels[$answersQuality])" -ForegroundColor Green
 Write-Host ""
 
+# ---- Question 8: Notifications ----
+Write-Host "─── Question 8 of 8: Notifications ───" -ForegroundColor Cyan
+Write-Host "Would you like to receive push notifications (daily briefings, goal-stall"
+Write-Host "alerts) from the companion? This is optional — the heartbeat runs and writes"
+Write-Host "to logs regardless."
+Write-Host ""
+Write-Host "  1) Skip — log-only mode, no push notifications"
+Write-Host "  2) Telegram — requires a bot token and chat ID"
+Write-Host "  3) ntfy.sh — requires a topic name (free, no account needed)"
+Write-Host "  4) Discord — requires a webhook URL"
+Write-Host ""
+$notifChoice = Read-Host "Choice (1-4) [1]"
+if ([string]::IsNullOrWhiteSpace($notifChoice)) { $notifChoice = "1" }
+$notifMap = @{ "1" = "skip"; "2" = "telegram"; "3" = "ntfy"; "4" = "discord" }
+while ($notifMap.ContainsKey($notifChoice) -eq $false) {
+    Write-Host "Invalid choice. Please enter 1, 2, 3, or 4." -ForegroundColor Red
+    $notifChoice = Read-Host "Choice (1-4) [1]"
+    if ([string]::IsNullOrWhiteSpace($notifChoice)) { $notifChoice = "1" }
+}
+$answersNotif = $notifMap[$notifChoice]
+$notifLabels = @{ "skip" = "Log-only (no push)"; "telegram" = "Telegram"; "ntfy" = "ntfy.sh"; "discord" = "Discord" }
+
+$notifValue = ""
+if ($answersNotif -eq "telegram") {
+    Write-Host ""
+    Write-Host "  Telegram setup:" -ForegroundColor Cyan
+    Write-Host "  You need a bot token from @BotFather and your chat ID."
+    Write-Host "  These are secrets — they will NOT be stored in any file."
+    Write-Host "  They will be printed at the end for you to set as environment variables."
+    Write-Host ""
+    $botToken = Read-Host "  Bot token (from @BotFather)"
+    $chatId = Read-Host "  Chat ID (numeric, from /getUpdates)"
+    $notifValue = "telegram|$botToken|$chatId"
+    Write-Host "  → Telegram configured" -ForegroundColor Green
+} elseif ($answersNotif -eq "ntfy") {
+    Write-Host ""
+    Write-Host "  ntfy.sh setup:" -ForegroundColor Cyan
+    Write-Host "  Choose a unique topic name (e.g., ygg-<yourname>-<random>)."
+    Write-Host "  Subscribe to this topic in the ntfy.sh app to receive notifications."
+    Write-Host ""
+    $topic = Read-Host "  Topic name"
+    $notifValue = "ntfy|$topic"
+    Write-Host "  → ntfy.sh configured with topic: $topic" -ForegroundColor Green
+} elseif ($answersNotif -eq "discord") {
+    Write-Host ""
+    Write-Host "  Discord setup:" -ForegroundColor Cyan
+    Write-Host "  Create a webhook in your Discord server (Server Settings → Integrations)."
+    Write-Host "  The webhook URL is a secret — it will NOT be stored in any file."
+    Write-Host ""
+    $webhook = Read-Host "  Webhook URL"
+    $notifValue = "discord|$webhook"
+    Write-Host "  → Discord configured" -ForegroundColor Green
+} else {
+    Write-Host "  → Skipped — log-only mode" -ForegroundColor Green
+}
+Write-Host ""
+
 # ---- Summary ----
 Write-Host "═══════════════════════════════════════════" -ForegroundColor Cyan
 Write-Host "Summary of your choices:" -ForegroundColor White
@@ -244,6 +301,7 @@ Write-Host "  Single model:       $(if ($answersSingleModel) { 'Yes — self-che
 Write-Host "  Who commits:        $($commitLabels[$answersCommit])"
 Write-Host "  Personality:        $($personalityLabels[$answersPersonality])"
 Write-Host "  Quality bar:        $($qualityLabels[$answersQuality])"
+Write-Host "  Notifications:      $($notifLabels[$answersNotif])"
 Write-Host ""
 
 $confirm = Read-Host "Proceed with installation? (Y/n) [y]"
@@ -267,6 +325,8 @@ $answers = @{
     "personalityLabel"  = $personalityLabels[$answersPersonality]
     "qualityBar"        = $answersQuality
     "qualityBarLabel"   = $qualityLabels[$answersQuality]
+    "notifications"     = $answersNotif
+    "notifValue"        = $notifValue
     "timestamp"         = (Get-Date -Format "yyyy-MM-ddTHH:mm:ss")
     "sourceSeed"        = $seedDir
     "schemaVersion"     = "1"
@@ -305,11 +365,57 @@ if ($exitCode -eq 0) {
     Write-Host "✓ Seed installation complete!" -ForegroundColor Green
     Write-Host "  Target: $TargetDirectory" -ForegroundColor DarkCyan
     Write-Host ""
-    Write-Host "Next steps:" -ForegroundColor White
-    Write-Host "  1. Review the generated files in $TargetDirectory"
-    Write-Host "  2. Run 'ygg doctor' to verify the installation"
-    Write-Host "  3. Open the project in your host runtime"
+
+    # ---- Optional: install daemon ----
+    Write-Host "─── Optional: install always-on daemon ───" -ForegroundColor Cyan
+    Write-Host "The ygg daemon runs in the background to receive Telegram messages"
+    Write-Host "and send daily heartbeat briefings automatically."
     Write-Host ""
+    $installDaemon = Read-Host "Install ygg daemon as a scheduled task? (y/N) [n]"
+    if ([string]::IsNullOrWhiteSpace($installDaemon)) { $installDaemon = "n" }
+    if ($installDaemon -eq "y" -or $installDaemon -eq "Y") {
+        Write-Host ""
+        Write-Host "  Installing ygg daemon scheduled task..." -ForegroundColor DarkCyan
+        $installScript = Join-Path -Path $scriptDir -ChildPath "ygg-daemon-install.ps1"
+        if (Test-Path -LiteralPath $installScript -PathType Leaf) {
+            & $installScript
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  ✓ Daemon scheduled task created." -ForegroundColor Green
+                Write-Host "  Start it now with: ygg daemon start" -ForegroundColor DarkCyan
+            } else {
+                Write-Host "  ⚠ Daemon installation may need administrator privileges." -ForegroundColor Yellow
+                Write-Host "  Run manually: ygg daemon install" -ForegroundColor Yellow
+            }
+        } else {
+            Write-Host "  ⚠ Daemon installer not found at: $installScript" -ForegroundColor Yellow
+            Write-Host "  Install manually: ygg daemon install" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "  Skipped. Install later with: ygg daemon install" -ForegroundColor DarkGray
+    }
+    Write-Host ""
+
+    Write-Host "Next steps:" -ForegroundColor White
+Write-Host "  1. Review the generated files in $TargetDirectory"
+Write-Host "  2. Run 'ygg doctor' to verify the installation"
+Write-Host "  3. Run 'ygg daemon start' to enable always-on presence"
+Write-Host "  4. Open the project in your host runtime"
+if ($answersNotif -ne "skip") {
+    Write-Host ""
+    Write-Host "Notification setup instructions:" -ForegroundColor Yellow
+    if ($answersNotif -eq "telegram") {
+        Write-Host "  Set these environment variables in your PowerShell profile:" -ForegroundColor Yellow
+        Write-Host "    [Environment]::SetEnvironmentVariable('TELEGRAM_BOT_TOKEN', '<token>', 'User')"
+        Write-Host "    [Environment]::SetEnvironmentVariable('TELEGRAM_CHAT_ID', '<chat_id>', 'User')"
+    } elseif ($answersNotif -eq "ntfy") {
+        Write-Host "  Set this environment variable in your PowerShell profile:" -ForegroundColor Yellow
+        Write-Host "    [Environment]::SetEnvironmentVariable('NTFY_TOPIC', '<topic>', 'User')"
+    } elseif ($answersNotif -eq "discord") {
+        Write-Host "  Set this environment variable in your PowerShell profile:" -ForegroundColor Yellow
+        Write-Host "    [Environment]::SetEnvironmentVariable('DISCORD_WEBHOOK', '<url>', 'User')"
+    }
+}
+Write-Host ""
 } else {
     Write-Host ""
     Write-Host "✗ Seed installation encountered errors (exit code: $exitCode)." -ForegroundColor Red

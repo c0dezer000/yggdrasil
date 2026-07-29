@@ -133,7 +133,21 @@ function Test-MojibakeBytes {
         # A cent A not euro - common mojibake run
         @(0xC3, 0x82, 0xC2, 0xA2, 0xC3, 0x82, 0xC2, 0xAC),
         # Triple sequence: A A A (accented char repeated)
-        @(0xC3, 0x82, 0xC3, 0x82, 0xC3, 0x82)
+        @(0xC3, 0x82, 0xC3, 0x82, 0xC3, 0x82),
+        # --- UTF-8 rendered through CP437/CP850, then re-saved as UTF-8 [E48] ---
+        # Every 3-byte UTF-8 sequence starting 0xE2 (arrows, dashes, quotes, check marks)
+        # renders in CP437 as GREEK CAPITAL GAMMA followed by two Latin-1 chars.
+        # 0xCE 0x93 is Gamma; the following 0xC3/0xC2 lead byte is what makes it mojibake
+        # rather than legitimate Greek text.
+        #   ##  = 0xCE93 0xC3A5 0xC386  (was 0xE2 0x86 0x92, RIGHTWARDS ARROW)
+        #   ##  = 0xCE93 0xC387 0xC3B6  (was 0xE2 0x80 0x94, EM DASH)
+        @(0xCE, 0x93, 0xC3),
+        @(0xCE, 0x93, 0xC2)
+        # NOT scanned: 0xC3A2 0xE2 0x82 0xAC (UTF-8 em dash read as CP1252). Both odin
+        # personas quote that sequence verbatim, inside backticks, as the worked example
+        # teaching an operator to recognise corruption. Scanning for it flags the
+        # documentation that exists to describe it. A check that fires on its own
+        # specimen is the defect it is looking for. [E48]
     )
     foreach ($pat in $patterns) {
         $plen = $pat.Length
@@ -172,7 +186,25 @@ try {
         $opencodeResult = & opencode agent list 2>&1
         $exitCode = $LASTEXITCODE
         if ($exitCode -eq 0) {
-            Write-Result -CheckName "Adapters load" -Passed $true
+            # An installed Claude adapter must be reported against too. This check previously
+            # ran only 'opencode agent list' while reporting under the name "Adapters load"
+            # (plural), so the Claude adapter passed without any loader having seen it. [E48]
+            $claudeAgentDir = Join-Path -Path $ProjectRoot -ChildPath ".claude\agents"
+            if (Test-Path $claudeAgentDir) {
+                $claudeCmd = Get-Command "claude" -ErrorAction SilentlyContinue
+                if ($claudeCmd) {
+                    $null = & claude doctor 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        Write-Result -CheckName "Adapters load (opencode + claude)" -Passed $true
+                    } else {
+                        Write-Result -CheckName "Adapters load (opencode + claude)" -Passed $false -Detail "opencode OK; 'claude doctor' exited with code $LASTEXITCODE"
+                    }
+                } else {
+                    Write-Result -CheckName "Adapters load (opencode only)" -Passed $false -Detail "opencode OK, but a Claude adapter is installed at .claude/agents and 'claude' is not in PATH - the Claude adapter has NOT been checked by any loader. This is not a pass."
+                }
+            } else {
+                Write-Result -CheckName "Adapters load (opencode only)" -Passed $true
+            }
         } else {
             $stderr = $opencodeResult | Out-String
             Write-Result -CheckName "Adapters load" -Passed $false -Detail "opencode agent list exited with code $exitCode"
@@ -297,11 +329,43 @@ foreach ($f in $allMdFiles) {
         $bracketFiles += $f.FullName
     }
 }
+
+# Generated agent files must never carry the literal template's own scaffolding.
+# This is the E41/E46 signature: the 24-line "LITERAL TEMPLATE" comment block was copied
+# ahead of the frontmatter, so the host's parser never saw a document start and the agent
+# silently did not exist. Inspection passed it; only the loader disagreed. [E48]
+$agentDirs = @(
+    (Join-Path -Path $ProjectRoot -ChildPath "seed\adapters\claude\agents"),
+    (Join-Path -Path $ProjectRoot -ChildPath "seed\adapters\opencode\agents"),
+    (Join-Path -Path $ProjectRoot -ChildPath ".claude\agents"),
+    (Join-Path -Path $ProjectRoot -ChildPath ".opencode\agents")
+)
+foreach ($dir in $agentDirs) {
+    if (-not (Test-Path $dir)) { continue }
+    foreach ($af in (Get-ChildItem -Path $dir -Filter "*.md" -File -ErrorAction SilentlyContinue)) {
+        $bytes = [System.IO.File]::ReadAllBytes($af.FullName)
+        # Frontmatter must begin at byte 0. A BOM or a comment block ahead of it means
+        # the host does not see this file as an agent at all.
+        if ($bytes.Length -lt 3 -or $bytes[0] -ne 0x2D -or $bytes[1] -ne 0x2D -or $bytes[2] -ne 0x2D) {
+            $bracketFiles += $af.FullName
+            continue
+        }
+        $atext = Get-Content -Path $af.FullName -Raw -ErrorAction SilentlyContinue
+        if ($atext -match 'LITERAL TEMPLATE' -or
+            $atext -match 'Fill ONLY the <slots>' -or
+            $atext -match '<lowercase-with-hyphens>' -or
+            $atext -match '<alias or full model ID') {
+            $bracketFiles += $af.FullName
+        }
+    }
+}
+
+$bracketFiles = $bracketFiles | Sort-Object -Unique
 if ($bracketFiles.Count -eq 0) {
-    Write-Result -CheckName "No placeholder brackets outside _templates/" -Passed $true
+    Write-Result -CheckName "No unfilled stubs; generated agents carry no template scaffolding" -Passed $true
 } else {
     $relPaths = $bracketFiles | ForEach-Object { $_.Replace($ProjectRoot, '').TrimStart('\') }
-    Write-Result -CheckName "No placeholder brackets outside _templates/" -Passed $false -Detail "Files with <...> patterns: $($relPaths -join '; ')"
+    Write-Result -CheckName "No unfilled stubs; generated agents carry no template scaffolding" -Passed $false -Detail "Files with template scaffolding or unfilled stubs: $($relPaths -join '; ')"
 }
 
 # ---- Check 9: Every capabilities.md entry has a corresponding file ----
@@ -366,7 +430,15 @@ foreach ($f in $appendOnlyFiles) {
                                  $lastNonBlank -match '^\|' -or
                                  $lastNonBlank -match '^---' -or
                                  $lastNonBlank -match '^\d+\.' -or
-                                 $lastNonBlank -match ':$'
+                                 $lastNonBlank -match ':$' -or
+                                 # A provenance ledger entry: ISO date, then the documented
+                                 # "YYYY-MM-DD - type - domain - line - evidence: <path>" shape.
+                                 # These end in a FILE PATH, not punctuation, so the heuristic
+                                 # above reported every correctly-formed append as a truncation.
+                                 # The check was firing on the file's own documented entry
+                                 # format - the same defect class as E33/E48. [E78]
+                                 ($lastNonBlank -match '^\d{4}-\d{2}-\d{2}\s' -and
+                                  $lastNonBlank -match 'evidence:')
                 if (-not $looksComplete) {
                     $truncatedFiles += "$f (last line appears incomplete)"
                 }

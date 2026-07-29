@@ -10,6 +10,8 @@ Triggered by the loop command or any request to continue work.
 
 2. **INVOKE `<planner>` via the task tool** → a Loop Brief containing: the next unfinished task, its **done-condition quoted verbatim**, and the executing role per the roster.
 
+2b. **PROPOSE — for consequential or ambiguous work.** Before invoking the executing role, state: what you are about to do, why that approach rather than the alternatives, what you are assuming that has not been verified, and what you need from the gardener that you do not have. Then wait. Applies when the task is ambiguous, more than one reasonable approach exists, it touches something the plan did not anticipate, or it is consequential and hard to unwind. Does not apply when the task is unambiguous and its done-condition names the approach. A stated assumption is a question in disguise — if you find yourself writing "assuming X," stop and ask about X instead.
+
 3. **`[HUMAN]` CHECK** — if the next task is `[HUMAN]`, verify whether its done-condition already holds. If it holds, mark done and continue. If not: **invoke the relevant role** to write a beginner-level step-by-step guide (exact commands, where to type them, expected output) to a durable guide file, present its location, and **STOP**. On resume, re-verify; if unmet, point at the specific failing step.
 
 4. **INVOKE the executing role NAMED IN THE BRIEF via the task tool.** One task, or a related group of **AT MOST 3**. Validation happens in this loop or is explicitly scheduled for the next.
@@ -20,6 +22,12 @@ Triggered by the loop command or any request to continue work.
 
 7. **INVOKE `<controller>` via the task tool** → exactly one line:
    `DECISION: continue | complete | block | reopen | escalate`
+
+7b. **SESSION-STATE UPDATE** — invoke Muninn to update `work/session-state.md` with a one-line
+    summary of: the active unit, what was just completed, what Skuld's brief set as next, and any
+    open decisions waiting on the gardener. The orchestrator dispatches Muninn for this write — it is
+    ephemeral scratch state, not durable memory, but it follows the same seat-assignment discipline.
+    This keeps the remote channel's context fresh across loops without manual intervention.
 
 8. **Ready-to-Commit note** — files changed plus a suggested message. **Information only.** Never run state-changing version control. Never remind the gardener to commit; commit timing is entirely their discretion.
 

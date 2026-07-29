@@ -26,6 +26,7 @@ Amended only by the gardener, by commit, with a growth-ledger entry.
 - Any deviation from a rule in the project's **high-stakes register**.
 - Scope changes beyond the approved plan (change-request workflow).
 - Locking a work unit as human-signed-off.
+- **Proceed on an ambiguous request.** When a request could reasonably be executed more than one way, and the choice would produce materially different work, stop and ask. Name the ambiguity, state the options with their consequences, and say which you would choose and why. Guessing is not resolution — a wrong guess costs more than a question.
 
 ## Must never
 

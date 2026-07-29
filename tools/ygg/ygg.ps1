@@ -8,10 +8,13 @@
   Subcommands:
     doctor     - run environment verification checks
     plant      - interactive wizard to generate a working seed installation
-    verify     - run deterministic conformance checks and queue judgment assertions
+    verify     - run static content checks and queue judgment assertions
     gate-l1    - run L1 static capability gate (schema, loadability, triggers, DVA)
     gate-l2    - run L2 behavioural capability gate (assertions, quality, integrity)
     heartbeat  - run daily heartbeat: goal staleness, staging, active unit
+    listen     - start Telegram inbound listener (P3 always-on presence)
+    daemon     - manage background daemon (start|stop|status|install|uninstall)
+    session-state - update or clear the ephemeral session-state file (manual invocation only)
 #>
 
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
@@ -64,6 +67,18 @@ switch ($resolvedSubcommand.ToLower()) {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-heartbeat.ps1") @resolvedArgs
         exit $LASTEXITCODE
     }
+    "listen" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-listen.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "daemon" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-daemon.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "session-state" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-session-state.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
     default {
         if ($resolvedSubcommand) {
             Write-Host "Unknown subcommand: $resolvedSubcommand" -ForegroundColor Red
@@ -76,10 +91,13 @@ switch ($resolvedSubcommand.ToLower()) {
         Write-Host "Subcommands:" -ForegroundColor White
         Write-Host "  doctor     Run environment verification checks" -ForegroundColor Gray
         Write-Host "  plant      Interactive wizard to generate a working seed installation" -ForegroundColor Gray
-        Write-Host "  verify     Run deterministic conformance checks and queue judgment assertions" -ForegroundColor Gray
+        Write-Host "  verify     Run static content checks and queue judgment assertions" -ForegroundColor Gray
         Write-Host "  gate-l1    Run L1 static capability gate (schema, loadability, triggers, DVA)" -ForegroundColor Gray
         Write-Host "  gate-l2    Run L2 behavioural capability gate (assertions, quality, integrity)" -ForegroundColor Gray
         Write-Host "  heartbeat  Run daily heartbeat: goal staleness, staging, active unit" -ForegroundColor Gray
+        Write-Host "  listen     Start Telegram inbound listener (P3 always-on presence)" -ForegroundColor Gray
+        Write-Host "  daemon     Manage background daemon (start|stop|status|install|uninstall)" -ForegroundColor Gray
+        Write-Host "  session-state  Update or clear the ephemeral session-state file (manual invocation only)" -ForegroundColor Gray
         exit 1
     }
 }

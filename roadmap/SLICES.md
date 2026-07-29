@@ -6,8 +6,8 @@ The single file that answers "where does this project stand." Read at every boot
 |---|---|---|---|---|---|---|
 | P0 | `P0-foundation.md` | Companion runs from files alone; conformance subset recorded | Completed | — | 8 | 2026-07-26 |
 | P1 | `P1-memory.md` | Memory in daily use; adoption protocols | In Progress | P0 | 11 | 2026-07-26 |
-| P2 | `P2-portability.md` | Portability + `ygg` CLI · **MVP** | In Progress | P1 | 6 | 2026-07-26 |
-| P3 | `P3-presence.md` | Always-on presence | In Progress | P2 | 1 | 2026-07-26 |
+| P2 | `P2-portability.md` | Portability + `ygg` CLI · **MVP** | In Progress | P1 | 9 | 2026-07-27 |
+| P3 | `P3-presence.md` | Always-on presence | In Progress | P2 | 2 | 2026-07-28 |
 | P4 | *(created at P2 close)* | Local-model bench + interop | Not Started | P2 | 0 | — |
 
 **Status values:** Not Started · In Progress · Blocked · Needs Review · Completed · Locked

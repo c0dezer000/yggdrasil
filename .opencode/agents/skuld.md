@@ -1,6 +1,7 @@
 ---
 description: Skuld — planner. Invoke to decide WHAT the next task is within the active work unit and to produce the Loop Brief. Read-only. NOT for deciding whether the loop continues — that is verdandi.
 mode: subagent
+model: opencode-go/deepseek-v4-flash
 tools:
   read: true
   write: false

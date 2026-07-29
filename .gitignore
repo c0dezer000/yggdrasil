@@ -6,7 +6,7 @@
 .claude/
 
 # session transcripts are not canon - keep them out of the repo
-session-*.md
+/session-*.md
 session-ses_*.md
 
 # editor

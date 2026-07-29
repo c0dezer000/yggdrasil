@@ -37,11 +37,47 @@ Recorded above.
 - `claude doctor` not run — Claude Code CLI may not be installed on this machine
 - Step to be completed in a validation loop
 
-### Step 5 — Classify the tier (PENDING)
-- Requires running YCS conformance suite (P0 subset)
+### Step 5 — Classify the tier (DONE)
+Tier classification: **Tier 1** — per-agent tool allowlists are structurally enforced by the host. Verified: skuld/verdandi/kvasir have no write or exec capability. Permission deny list in settings.json blocks destructive git commands project-wide. `permissionMode: plan` on bifrost and kvasir.
 
-### Step 6 — Register (PENDING)
-- Growth-ledger entry pending tier classification
+**Residue:** The orchestrator boundary ("Odin never builds") is prose-only — not structurally enforced. All NOT-for clauses in descriptions are advisory text.
+
+**Conformance profile:** 10 agents discovered and loadable. No generator drift between seed/adapters/claude/ and .claude/.
+
+### Step 6 — Register (PARTIAL)
+- Growth-ledger entry: Cross-host Claude Code adapter registered. Tier 1 soil. 10 charters.
+- **No conformance transcript exists for this soil.** `evaluations/claude/cross-host-conformance-2026-07-27.md`
+  was cited here and at the tier classification below; the path has never existed and no
+  `evaluations/claude/` directory exists. Every conformance transcript in the repository is under
+  `evaluations/opencode/deepseek-v4-flash/`. Task 2.8 is unticked accordingly `[E42]`.
+
+## Model assignment on this soil — independence tier is unavailable
+
+`seed/adapters/opencode/model-assignment.md` assigns var and heimdall a model from a **different
+lab** than the roles whose work they review (`:45` — "Review is the one role that must come from a
+different lab than the work it assesses"). **That property cannot be reproduced on Claude Code.**
+This host serves Anthropic models only, so every seat — orchestrator, builder, validator, security —
+is one lab by construction. Assigning a `model:` field here selects a capability tier; it cannot
+select a lab.
+
+**Consequence, which must be carried wherever a verdict is reported:** on this soil, var reviewing
+brokkr's work, heimdall reviewing var's finding, and any council or deliberation seat reviewing
+another are **structured self-checks, not independent review** `[review.md §4]`. One model in several
+seats produces one opinion in several voices. A report that does not label them so has overstated
+its own evidence.
+
+- **Volume / capability tiering** *is* available via `model:` (`haiku`, `sonnet`, `opus`, `fable`)
+  and is currently **unassigned** — all ten agents inherit the main conversation model. Whether to
+  tier by cost on this soil is a gardener decision, staged rather than assumed.
+- **Independence tiering** is **not available on this soil at any setting.** It is not a gap to be
+  filled by a future assignment; it is a property of the host.
+- The derivation rule at `model-assignment.md:51-68` still applies to rule 2 (capability) and
+  rule 3 (volume). **Rule 1 (independence) has no satisfying assignment here** and must escalate to
+  the gardener or to a second soil.
+
+`[E50]`
+
+---
 
 ## Format Traps Summary
 
@@ -54,3 +90,13 @@ Recorded above.
 | Agent identity | From filename | From `name` frontmatter field |
 | Agent naming | Any case | Lowercase with hyphens recommended |
 | Subagent mode | `mode: subagent` field | No `mode` field; uses `permissionMode` instead |
+| Invalid permissionMode | Silent ignore | `defaultsOnly` is silently ignored; valid values: `default`, `acceptEdits`, `plan`, `bypassPermissions` |
+
+### Tier classification (2026-07-27, transcript gap recorded 2026-07-28)
+- **Soil tier:** Tier 1 — per-agent tool allowlists host-enforced
+- **Residue:** orchestrator boundary (Odin never builds) is prose-only; all NOT-for clauses in descriptions are advisory
+- **Conformance profile:** 10 charters present, 0 generator drift between `seed/adapters/claude/` and `.claude/`
+- **Reviewer:** Claude Code (Opus 5) — **same lab as every seat reviewed; a structured self-check, not independent review** `[E50]`
+- **Transcript:** **none.** The previously cited `evaluations/claude/cross-host-conformance-2026-07-27.md`
+  does not exist and never did `[E42]`. The tier claim above rests on inspection, not on a recorded
+  conformance run, and is unverified until 2.8 produces a transcript on this soil.

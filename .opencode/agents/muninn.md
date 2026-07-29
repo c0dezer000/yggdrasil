@@ -1,6 +1,7 @@
 ---
 description: Muninn — memory and documentation keeper. Invoke to update the work index on status change, maintain canonical documents and the decision record, and write session digests. NOT for writing code or making decisions.
 mode: subagent
+model: opencode-go/deepseek-v4-flash
 tools:
   read: true
   write: true

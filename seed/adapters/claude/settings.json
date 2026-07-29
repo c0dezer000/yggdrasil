@@ -9,21 +9,21 @@
       "Bash",
       "Agent",
       "Task",
-      "GitStatus",
-      "GitLog",
-      "GitDiff",
-      "GitShow"
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git show*)"
     ],
     "deny": [
-      "GitCommit",
-      "GitPush",
-      "GitPull",
-      "GitMerge",
-      "GitRebase",
-      "GitReset",
-      "GitCheckout",
-      "GitBranch(DELETE)",
-      "GitTag(DELETE)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git pull*)",
+      "Bash(git merge*)",
+      "Bash(git rebase*)",
+      "Bash(git reset*)",
+      "Bash(git checkout*)",
+      "Bash(git branch -D*)",
+      "Bash(git tag -d*)",
       "Bash(sudo*)"
     ]
   }
