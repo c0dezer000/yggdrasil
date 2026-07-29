@@ -9,6 +9,36 @@
 /session-*.md
 session-ses_*.md
 
+# ---------------------------------------------------------------------------
+# Remote-channel runtime state - machine-specific, and some of it is untrusted
+# third-party text. NONE of this was ignored before, which mattered:
+#
+# logs/remote/ holds the literal content of Telegram messages plus the sender's
+# chat id. The E47 unblocking record states condition 5 as "logs moved to
+# logs/remote/, gitignored". They were moved; they were never gitignored. One
+# `git add -A` would have committed remote message content and the chat id into
+# a pushed repository. That is the untrusted-content leg of the trifecta being
+# published, and it is why this block exists.
+#
+# The rest is per-machine runtime state that must never travel to another
+# device: a pid from this host, a resolved session id from this host's opencode
+# storage, and a bridge config that may carry a server password.
+# ---------------------------------------------------------------------------
+logs/
+work/task-queue.md
+work/task-result*.md
+work/remote-session.json
+.ygg-daemon.pid
+.ygg-daemon.json
+.ygg-daemon-stop
+.ygg-daemon-chat-id
+.ygg-send-debug.log
+.ygg-verify-pre-status.txt
+
+# The bridge config can contain OPENCODE_SERVER_PASSWORD. The .example is
+# tracked; the real one is not.
+.ygg-bridge.json
+
 # editor
 .vscode/
 .obsidian/
