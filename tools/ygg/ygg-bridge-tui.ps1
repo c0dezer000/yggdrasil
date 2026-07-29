@@ -148,6 +148,44 @@ function Invoke-BridgeApi {
     }
 }
 
+function Invoke-BridgeAction {
+    <#
+    .SYNOPSIS
+      POSTs to an endpoint whose success is the HTTP status, not the response body.
+      Returns $true on 2xx, $false otherwise.
+    .DESCRIPTION
+      The /tui/* endpoints return little or nothing. Judging them by their body - as
+      Invoke-BridgeApi does - would read an empty 200 as failure, and a false 'submit-failed'
+      makes the daemon fall back to the headless path AFTER the prompt has already been
+      submitted to the TUI. The instruction would then run twice, once in the terminal and once
+      headless. For a write-capable agent that is the worst failure this bridge could have, so
+      these calls are judged by status code instead.
+    #>
+    param($Config, [string]$Path, $Body = $null, [int]$TimeoutSec = 20)
+
+    $uri = ($Config.url.TrimEnd('/')) + $Path
+    $params = @{
+        Uri             = $uri
+        Method          = 'Post'
+        TimeoutSec      = $TimeoutSec
+        Headers         = (Get-BridgeHeaders -Config $Config)
+        UseBasicParsing = $true
+        ErrorAction     = 'Stop'
+    }
+    if ($null -ne $Body) {
+        $params['Body']        = ($Body | ConvertTo-Json -Depth 6 -Compress)
+        $params['ContentType'] = 'application/json'
+    }
+
+    try {
+        $resp = Invoke-WebRequest @params
+        return ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 300)
+    } catch {
+        Write-Host "  [WARN] bridge POST $Path failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
+        return $false
+    }
+}
+
 function Test-BridgeServer {
     <#
     .SYNOPSIS
@@ -174,11 +212,16 @@ function Get-BridgeSessionId {
       Decides which session the remote prompt joins, in priority order:
         1. the session a TUI currently has in the foreground  (GET /api/session/active)
         2. the session id remembered from last time           (work/remote-session.json)
-        3. the most recently updated session on the server    (GET /session)
-        4. a new session                                      (POST /session)
+        3. a NEW session dedicated to the remote channel      (POST /session)
 
       (1) is what makes the remote message land in the conversation the gardener is actually
-      looking at. The rest are fallbacks so the channel still works with no TUI attached.
+      looking at.
+
+      There is deliberately NO "fall back to the most recently updated session" step. That
+      sounds helpful and is not: on first run it resolves to whatever session happened to be
+      touched last - during testing that was an unrelated month-old conversation - and
+      /tui/select-session would then yank the gardener's terminal into it and post a remote
+      message there. Creating a session is predictable; adopting an arbitrary one is not.
     #>
     param($Config, [string]$Root)
 
@@ -204,15 +247,7 @@ function Get-BridgeSessionId {
         } catch { }
     }
 
-    # --- 3. most recently updated existing session ---
-    $sessions = Invoke-BridgeApi -Config $Config -Path '/session' -Method Get -TimeoutSec 20
-    if ($sessions) {
-        $newest = @($sessions) | Where-Object { $_.id -match '^ses' } |
-                  Sort-Object -Property { $_.time.updated } -Descending | Select-Object -First 1
-        if ($newest) { return $newest.id }
-    }
-
-    # --- 4. create one ---
+    # --- 3. create a dedicated one ---
     $created = Invoke-BridgeApi -Config $Config -Path '/session' -Method Post `
                    -Body @{ title = 'Remote channel' } -TimeoutSec 30
     if ($created -and $created.id) { return $created.id }
@@ -264,20 +299,28 @@ function Send-BridgePrompt {
     # Bring the TUI to the session we are about to write into, so the submitted prompt is not
     # delivered to a conversation that is off-screen.
     if ($Config.selectSession -and $SessionId) {
-        $null = Invoke-BridgeApi -Config $Config -Path '/tui/select-session' -Method Post `
+        $null = Invoke-BridgeAction -Config $Config -Path '/tui/select-session' `
                     -Body @{ sessionID = $SessionId } -TimeoutSec 15
     }
 
     # Clear anything half-typed, otherwise the remote text is appended to it and both are
     # submitted as one malformed prompt.
-    $null = Invoke-BridgeApi -Config $Config -Path '/tui/clear-prompt' -Method Post -TimeoutSec 15
+    $null = Invoke-BridgeAction -Config $Config -Path '/tui/clear-prompt' -TimeoutSec 15
 
-    $appended = Invoke-BridgeApi -Config $Config -Path '/tui/append-prompt' -Method Post `
-                    -Body @{ text = $Text } -TimeoutSec 20
-    if ($null -eq $appended) { return $false }
+    if (-not (Invoke-BridgeAction -Config $Config -Path '/tui/append-prompt' `
+                  -Body @{ text = $Text } -TimeoutSec 20)) {
+        # Nothing was submitted, so the caller may safely fall back.
+        return $false
+    }
 
-    $submitted = Invoke-BridgeApi -Config $Config -Path '/tui/submit-prompt' -Method Post -TimeoutSec 20
-    return ($null -ne $submitted)
+    if (-not (Invoke-BridgeAction -Config $Config -Path '/tui/submit-prompt' -TimeoutSec 20)) {
+        # The text is sitting in the prompt box unsubmitted. Clear it so it does not get
+        # prepended to whatever the gardener types next.
+        $null = Invoke-BridgeAction -Config $Config -Path '/tui/clear-prompt' -TimeoutSec 15
+        return $false
+    }
+
+    return $true
 }
 
 function Wait-BridgeReply {
