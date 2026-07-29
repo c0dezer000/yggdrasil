@@ -24,7 +24,9 @@ $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
 $yggRoot   = Resolve-Path (Join-Path -Path $scriptDir -ChildPath "..\..")
 $workDir   = Join-Path -Path $yggRoot -ChildPath "work"
 $taskQueueFile  = Join-Path -Path $workDir -ChildPath "task-queue.md"
-$taskResultFile = Join-Path -Path $workDir -ChildPath "task-result.md"
+# Result files are per-task. A single shared task-result.md was raced by every waiting poll
+# job in the daemon; see the matching note in ygg-daemon.ps1.
+function Get-TaskResultFile { param([string]$Id) Join-Path -Path $workDir -ChildPath "task-result-$Id.md" }
 $stagingFile    = Join-Path -Path $yggRoot -ChildPath "seed\memory\staging.md"
 
 function Write-Utf8NoBom {
@@ -52,27 +54,41 @@ if ($TaskId -and $Result) {
     }
     $timestamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     $resultContent = "TASK_ID: $TaskId`r`nTIMESTAMP: $timestamp`r`nRESULT:`r`n$Result`r`nEND"
-    Write-Utf8NoBom -Path $taskResultFile -Content $resultContent
+    Write-Utf8NoBom -Path (Get-TaskResultFile -Id $TaskId) -Content $resultContent
     exit 0
 }
 
 # ---- Mode 1: Check queue ----
+# Pops ONE task and leaves the rest. This previously read the whole file with -Raw, split it on
+# the first two pipes, and then blanked the file -- so with more than one queued task it treated
+# every line after the first as part of task one's prompt and destroyed them all.
 if (-not (Test-Path -LiteralPath $taskQueueFile -PathType Leaf)) { exit 0 }
-$content = Get-Content -Path $taskQueueFile -Raw -Encoding UTF8
-if ([string]::IsNullOrWhiteSpace($content)) { exit 0 }
+$lines = @(Get-Content -Path $taskQueueFile -Encoding UTF8 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+if ($lines.Count -eq 0) { exit 0 }
 
-$parts = $content.Trim() -split '\|', 3
-if ($parts.Count -lt 3) { exit 0 }
+$parts = $lines[0].Trim() -split '\|', 3
+if ($parts.Count -lt 3) {
+    # Malformed head-of-queue entry: drop it rather than blocking the queue forever.
+    $remainder = if ($lines.Count -gt 1) { ($lines[1..($lines.Count - 1)] -join "`r`n") + "`r`n" } else { "" }
+    Write-Utf8NoBom -Path $taskQueueFile -Content $remainder
+    Write-Host "Discarded malformed queue entry." -ForegroundColor DarkYellow
+    exit 1
+}
 
 $taskId    = $parts[0].Trim()
 $timestamp = $parts[1].Trim()
 $prompt    = $parts[2].Trim()
 
-# Clear queue (write empty)
-Write-Utf8NoBom -Path $taskQueueFile -Content ""
+# Rewrite the queue without the popped entry, preserving the remaining tasks.
+$remainder = if ($lines.Count -gt 1) { ($lines[1..($lines.Count - 1)] -join "`r`n") + "`r`n" } else { "" }
+Write-Utf8NoBom -Path $taskQueueFile -Content $remainder
 
+# The task id is printed. It was previously assigned to $script:lastTaskId and then discarded
+# when the script exited, leaving the operator no way to know which id to report back to.
+Write-Host "TASK_ID: $taskId" -ForegroundColor DarkGray
+Write-Host "QUEUED : $timestamp" -ForegroundColor DarkGray
+Write-Host "PENDING: $($lines.Count - 1) more" -ForegroundColor DarkGray
 Write-Host ">>> Telegram: $prompt" -ForegroundColor Cyan
 Write-Host ""
-$script:lastTaskId = $taskId
 
 exit 0

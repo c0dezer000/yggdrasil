@@ -483,10 +483,13 @@ function Process-Message {
     }
 
     # ---- Stage 1: Y10 check - ratification refusal ----
-    # @-prefixed messages bypass Y10 because they route to the queue which is
-    # processed by the local session — satisfying Y10's requirement that ratification
-    # happens in a local session. Unprefixed messages are still blocked.
-    $bypassY10 = $Text -match '^@\w+\s+'
+    # Only @odin bypasses Y10, and only because that path writes to the task queue and is
+    # executed by a LOCAL session -- which is what Y10 actually requires. The bypass was
+    # previously '^@\w+\s+', which also exempted @ratatoskr; that path does NOT route through
+    # the queue, it goes straight to `opencode run`, so 'ratify X' addressed to @ratatoskr
+    # reached a model directly with Y10 disabled. A control that is skipped for every
+    # @-prefix is not scoped to the justification written beside it.
+    $bypassY10 = $Text -match '^@odin\b'
     if (-not $bypassY10 -and (Test-RatificationAttempt -Text $Text)) {
         Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "blocked-y10"
         $script:ratificationBlocked++
@@ -681,23 +684,36 @@ function Process-Message {
             $taskId = "task-$(Get-Date -Format 'yyyyMMdd-HHmmss-ffff')"
             $taskTimestamp = Get-Timestamp
             $taskQueueFile  = Join-Path -Path $yggRoot -ChildPath "work\task-queue.md"
-            $taskResultFile = Join-Path -Path $yggRoot -ChildPath "work\task-result.md"
+            # One result file PER TASK [audit]. A single shared work\task-result.md let two
+            # concurrent poll jobs read the same file: whichever matched first deleted it, so the
+            # other waited out its full 300s and reported a timeout for a task that had completed.
+            # It also allowed a stale result to be delivered against a newer task id.
+            $taskResultFile = Join-Path -Path $yggRoot -ChildPath "work\task-result-$taskId.md"
             $workDir = Join-Path -Path $yggRoot -ChildPath "work"
 
             if (-not (Test-Path -LiteralPath $workDir -PathType Container)) {
                 New-Item -ItemType Directory -Path $workDir -Force | Out-Null
             }
 
-            # Write task to queue (pipe-delimited: taskId|timestamp|prompt)
-            $taskContent = "$taskId|$taskTimestamp|$agentPrompt"
+            # Append the task to the queue (pipe-delimited: taskId|timestamp|prompt), one per line.
+            # This was WriteAllText, which truncated the file: a second @odin message arriving
+            # before the first was picked up silently destroyed the first task, and its poll job
+            # then ran the full 300s and reported a timeout. Newlines are stripped from the prompt
+            # so one task can never occupy more than one line, or forge a second queue entry.
+            $flatPrompt = ($agentPrompt -replace '[\r\n]+', ' ').Trim()
+            $taskContent = "$taskId|$taskTimestamp|$flatPrompt"
             $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-            [System.IO.File]::WriteAllText($taskQueueFile, $taskContent, $utf8NoBom)
+            [System.IO.File]::AppendAllText($taskQueueFile, $taskContent + "`r`n", $utf8NoBom)
             Write-Host "  Task $taskId queued for local session" -ForegroundColor DarkCyan
-            Send-TelegramMessage -ChatId $ChatId -Text "Task queued. Executing in session..."
 
-            # Spawn background job to poll for result — daemon stays responsive
+            # Spawn background job to poll for result — daemon stays responsive.
+            # $agentPrompt is passed IN: a Start-Job scriptblock does not inherit caller scope, so
+            # the previous `$agentPrompt.Substring(...)` threw on a null and the execution
+            # transcript recorded 'input=' with the prompt missing -- the one field that made the
+            # log an audit record. Truncation happens here, in the caller's scope.
+            $promptExcerpt = $flatPrompt.Substring(0, [Math]::Min(80, $flatPrompt.Length))
             $null = Start-Job -Name "task-poll-$taskId" -ScriptBlock {
-                param($taskId, $taskResultFile, $yggRoot, $ChatId, $tgToken)
+                param($taskId, $taskResultFile, $yggRoot, $ChatId, $tgToken, $promptExcerpt)
                 $pollStart = Get-Date
                 $output = $null
                 while (((Get-Date) - $pollStart).TotalSeconds -lt 300 -and -not $output) {
@@ -712,15 +728,24 @@ function Process-Message {
                         }
                     }
                 }
-                if (-not $output) { $output = "Task timed out (300s). The task may still be pending." }
+                $timedOut = -not $output
+                if ($timedOut) { $output = "Task timed out (300s). The task may still be pending." }
                 $body = @{ chat_id = $ChatId; text = $output } | ConvertTo-Json
                 $null = Invoke-RestMethod -Uri "https://api.telegram.org/bot${tgToken}/sendMessage" -Method Post -Body $body -ContentType "application/json" -ErrorAction SilentlyContinue
-                $el = Join-Path -Path $yggRoot -ChildPath "logs\remote\execution-$(Get-Date -Format 'yyyy-MM-dd').md"
-                $sp = $agentPrompt.Substring(0, [Math]::Min(80, $agentPrompt.Length))
-                "$(Get-Date -Format 'HH:mm:ss') | @odin | exit=0 | input=$sp | output_len=$($output.Length)" | Out-File $el -Encoding UTF8 -Append
-            } -ArgumentList $taskId, $taskResultFile, $yggRoot, $ChatId, $script:tgToken
+                $logDirRemote = Join-Path -Path $yggRoot -ChildPath "logs\remote"
+                if (-not (Test-Path -LiteralPath $logDirRemote -PathType Container)) {
+                    New-Item -ItemType Directory -Path $logDirRemote -Force | Out-Null
+                }
+                $el = Join-Path -Path $logDirRemote -ChildPath "execution-$(Get-Date -Format 'yyyy-MM-dd').md"
+                # exit was hardcoded to 0 even on timeout, so a failed execution was logged as a
+                # success. Report the real outcome.
+                $exitCode = if ($timedOut) { 1 } else { 0 }
+                "$(Get-Date -Format 'HH:mm:ss') | @odin | exit=$exitCode | task=$taskId | input=$promptExcerpt | output_len=$($output.Length)" | Out-File $el -Encoding UTF8 -Append
+            } -ArgumentList $taskId, $taskResultFile, $yggRoot, $ChatId, $script:tgToken, $promptExcerpt
 
-            # Immediately acknowledge — daemon is not blocked
+            # Single acknowledgement. There were two: this one and a "Task queued. Executing in
+            # session..." sent above, so every remote execution produced two near-identical
+            # Telegram messages before any work had started.
             $output = "Task queued (ID: $taskId). I will send the result when the session completes."
         } else {
             # Existing ratatoskr path unchanged
