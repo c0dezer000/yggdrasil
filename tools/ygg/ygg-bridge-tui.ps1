@@ -60,7 +60,7 @@ function Get-BridgeConfig {
         username            = 'opencode'
         replyTimeoutSeconds = 300
         agentPinningWaived  = $false
-        selectSession       = $true
+        selectSession       = $false   # do not navigate the TUI; use the session on screen
     }
 
     $cfgPath = Join-Path -Path $Root -ChildPath ".ygg-bridge.json"
@@ -129,19 +129,35 @@ function Invoke-BridgeApi {
 
     $uri = ($Config.url.TrimEnd('/')) + $Path
     $params = @{
-        Uri         = $uri
-        Method      = $Method
-        TimeoutSec  = $TimeoutSec
-        Headers     = (Get-BridgeHeaders -Config $Config)
-        ErrorAction = 'Stop'
+        Uri             = $uri
+        Method          = $Method
+        TimeoutSec      = $TimeoutSec
+        Headers         = (Get-BridgeHeaders -Config $Config)
+        UseBasicParsing = $true
+        ErrorAction     = 'Stop'
     }
     if ($null -ne $Body) {
-        $params['Body']        = ($Body | ConvertTo-Json -Depth 6 -Compress)
-        $params['ContentType'] = 'application/json'
+        $params['Body']        = ([System.Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Depth 6 -Compress)))
+        $params['ContentType'] = 'application/json; charset=utf-8'
     }
 
     try {
-        return Invoke-RestMethod @params
+        # The response is read as RAW BYTES and decoded as UTF-8 explicitly, rather than letting
+        # Invoke-RestMethod decode it.
+        #
+        # Windows PowerShell 5.1 decodes a JSON response body as Latin-1 when the server does not
+        # spell out a charset, so every non-ASCII character arrives as its individual UTF-8 bytes
+        # reinterpreted one-per-character. An em dash (U+2014, bytes E2 80 94) came back as
+        # U+00E2 U+0080 U+0094 - "P3 - Always-on Presence" rendered as "P3 a<80><94> Always-on".
+        # Verified against a real reply on this host. The daemon's mojibake repair map [E73]
+        # covers a different CP437 mangling and does not catch this one, so every bridge reply
+        # containing a dash or a curly quote would have reached the phone corrupted.
+        $resp  = Invoke-WebRequest @params
+        $bytes = $resp.RawContentStream.ToArray()
+        if ($bytes.Length -eq 0) { return $null }
+        $text  = [System.Text.Encoding]::UTF8.GetString($bytes)
+        if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+        return ($text | ConvertFrom-Json)
     } catch {
         Write-Host "  [WARN] bridge $Method $Path failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
         return $null
@@ -206,51 +222,104 @@ function Test-BridgeServer {
 # SESSION RESOLUTION
 # =====================================================================
 
-function Get-BridgeSessionId {
+function Get-BridgeRememberedSessionId {
     <#
     .SYNOPSIS
-      Decides which session the remote prompt joins, in priority order:
-        1. the session a TUI currently has in the foreground  (GET /api/session/active)
-        2. the session id remembered from last time           (work/remote-session.json)
-        3. a NEW session dedicated to the remote channel      (POST /session)
-
-      (1) is what makes the remote message land in the conversation the gardener is actually
-      looking at.
-
-      There is deliberately NO "fall back to the most recently updated session" step. That
-      sounds helpful and is not: on first run it resolves to whatever session happened to be
-      touched last - during testing that was an unrelated month-old conversation - and
-      /tui/select-session would then yank the gardener's terminal into it and post a remote
-      message there. Creating a session is predictable; adopting an arbitrary one is not.
+      The session the last remote message landed in, or $null. Used only for diagnostics and
+      for the opt-in selectSession behaviour - never to decide where a prompt goes.
     #>
-    param($Config, [string]$Root)
+    param([string]$Root)
 
-    # --- 1. foreground session owned by an attached TUI ---
-    $active = Invoke-BridgeApi -Config $Config -Path '/api/session/active' -Method Get -TimeoutSec 10
-    if ($active -and $active.data) {
-        $ids = @($active.data.PSObject.Properties.Name)
-        if ($ids.Count -gt 0 -and $ids[0] -match '^ses') {
-            return $ids[0]
+    $stateFile = Join-Path -Path $Root -ChildPath "work\remote-session.json"
+    if (-not (Test-Path -LiteralPath $stateFile -PathType Leaf)) { return $null }
+    try {
+        $st = Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($st.sessionID -match '^ses') { return $st.sessionID }
+    } catch { }
+    return $null
+}
+
+function Get-BridgeSessionSnapshot {
+    <#
+    .SYNOPSIS
+      Map of sessionID -> last-updated timestamp, taken BEFORE submitting.
+      Used to work out which session the TUI actually put the prompt in.
+    #>
+    param($Config)
+
+    $snap = @{}
+    $sessions = Invoke-BridgeApi -Config $Config -Path '/session' -Method Get -TimeoutSec 30
+    if (-not $sessions) { return $snap }
+    foreach ($s in @($sessions)) {
+        if ($s.id -match '^ses') {
+            $snap[$s.id] = [int64]($s.time.updated)
         }
     }
+    return $snap
+}
 
-    # --- 2. remembered session ---
-    $stateFile = Join-Path -Path $Root -ChildPath "work\remote-session.json"
-    if (Test-Path -LiteralPath $stateFile -PathType Leaf) {
-        try {
-            $st = Get-Content -LiteralPath $stateFile -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($st.sessionID -match '^ses') {
-                # Confirm it still exists; a deleted session would 404 on every prompt.
-                $probe = Invoke-BridgeApi -Config $Config -Path "/session/$($st.sessionID)" -Method Get -TimeoutSec 10
-                if ($probe) { return $st.sessionID }
+function Find-BridgeTargetSession {
+    <#
+    .SYNOPSIS
+      Identifies which session received the prompt, by finding the session whose transcript now
+      ends in a user message matching $Text. Returns @{ SessionId; MessageId } or $null.
+    .DESCRIPTION
+      This replaces choosing a session up front, which was the design error behind the first
+      live test: /api/session/active returns an empty object even with a TUI attached, so the
+      bridge fell through to POST /session and then /tui/select-session, creating a fresh
+      session and navigating the gardener's terminal away from the conversation they were in.
+
+      Nothing about DELIVERY ever needed a session id. /tui/append-prompt types into the TUI's
+      prompt box and /tui/submit-prompt submits it to whatever session that TUI is already
+      showing - which is exactly the desired behaviour. A session id is needed only to read the
+      answer back, and that can be discovered after the fact.
+    #>
+    param($Config, $Snapshot, [string]$Text, [int]$TimeoutSeconds = 20)
+
+    $wanted   = $Text.Trim()
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Seconds 2
+
+        $sessions = Invoke-BridgeApi -Config $Config -Path '/session' -Method Get -TimeoutSec 30
+        if (-not $sessions) { continue }
+
+        # Only sessions that changed since the snapshot are candidates. A session absent from
+        # the snapshot is new since we looked, so it counts too.
+        $candidates = @($sessions) | Where-Object {
+            $_.id -match '^ses' -and (
+                -not $Snapshot.ContainsKey($_.id) -or
+                [int64]($_.time.updated) -gt $Snapshot[$_.id]
+            )
+        } | Sort-Object -Property { $_.time.updated } -Descending
+
+        foreach ($c in $candidates) {
+            $msgs = Invoke-BridgeApi -Config $Config -Path "/session/$($c.id)/message" -Method Get -TimeoutSec 30
+            if (-not $msgs) { continue }
+
+            # Compare against the LAST user message in the transcript, with no fixed window.
+            #
+            # This originally scanned only the final four messages, which failed against real
+            # data: by the time the poll runs, the agent has usually emitted several assistant
+            # messages after the prompt (a five-message transcript had the user turn at index 0),
+            # so the window slid straight past it. The prompt just submitted is by definition the
+            # newest user turn, so find that and compare - no window, no guesswork.
+            $all      = @($msgs)
+            $lastUser = $null
+            for ($i = $all.Count - 1; $i -ge 0; $i--) {
+                if ($all[$i].info.role -eq 'user') { $lastUser = $all[$i]; break }
             }
-        } catch { }
-    }
+            if ($null -eq $lastUser) { continue }
 
-    # --- 3. create a dedicated one ---
-    $created = Invoke-BridgeApi -Config $Config -Path '/session' -Method Post `
-                   -Body @{ title = 'Remote channel' } -TimeoutSec 30
-    if ($created -and $created.id) { return $created.id }
+            $body = (@($lastUser.parts) |
+                     Where-Object { $_.type -eq 'text' } |
+                     ForEach-Object { $_.text }) -join "`n"
+            if ($body.Trim() -eq $wanted) {
+                return @{ SessionId = $c.id; MessageId = $lastUser.info.id }
+            }
+        }
+    }
 
     return $null
 }
@@ -296,8 +365,14 @@ function Send-BridgePrompt {
     #>
     param($Config, [string]$Text, [string]$SessionId)
 
-    # Bring the TUI to the session we are about to write into, so the submitted prompt is not
-    # delivered to a conversation that is off-screen.
+    # By default the TUI is NOT navigated anywhere. The prompt goes into whichever session is
+    # already on screen, which is what "continue the conversation I am looking at" means.
+    #
+    # selectSession is opt-in and defaults to false. Setting it true forces the terminal to
+    # jump to the remembered session before submitting. That is occasionally useful - pinning
+    # the remote channel to one dedicated conversation - but on the first live test it was the
+    # behaviour that yanked the gardener out of their active conversation, so it is no longer
+    # the default and never fires without a remembered id.
     if ($Config.selectSession -and $SessionId) {
         $null = Invoke-BridgeAction -Config $Config -Path '/tui/select-session' `
                     -Body @{ sessionID = $SessionId } -TimeoutSec 15
@@ -387,27 +462,40 @@ function Invoke-TuiBridge {
         return @{ Ok = $false; Reason = 'server-unreachable' }
     }
 
-    $sessionId = Get-BridgeSessionId -Config $Config -Root $Root
-    if (-not $sessionId) {
-        return @{ Ok = $false; Reason = 'no-session' }
-    }
-    Save-BridgeSessionId -Root $Root -SessionId $sessionId
+    # Snapshot BEFORE submitting so the receiving session can be identified afterwards.
+    $snapshot = Get-BridgeSessionSnapshot -Config $Config
 
-    $baseline = Get-BridgeLastMessageId -Config $Config -SessionId $sessionId
+    # selectSession is opt-in; the remembered id is only consulted when it is on.
+    $pinned = if ($Config.selectSession) { Get-BridgeRememberedSessionId -Root $Root } else { $null }
 
-    if (-not (Send-BridgePrompt -Config $Config -Text $Text -SessionId $sessionId)) {
+    if (-not (Send-BridgePrompt -Config $Config -Text $Text -SessionId $pinned)) {
+        # A /tui/* call returned non-2xx, so nothing was submitted. Safe for the caller to fall
+        # back to the headless path.
         return @{ Ok = $false; Reason = 'submit-failed' }
     }
 
+    $target = Find-BridgeTargetSession -Config $Config -Snapshot $snapshot -Text $Text -TimeoutSeconds 20
+    if ($null -eq $target) {
+        # The POSTs succeeded but no session shows the prompt. Most likely no TUI is attached,
+        # so the server accepted the call with nothing listening.
+        #
+        # This deliberately does NOT report a reason the daemon falls back on. The submit was
+        # accepted, so the prompt may yet appear; re-running it headlessly could execute the
+        # same instruction twice. An unanswered message is recoverable, a duplicated one is not.
+        return @{ Ok = $false; Reason = 'delivery-unconfirmed' }
+    }
+
+    Save-BridgeSessionId -Root $Root -SessionId $target.SessionId
+
     $timeout = if ($Config.replyTimeoutSeconds -gt 0) { [int]$Config.replyTimeoutSeconds } else { 300 }
-    $reply = Wait-BridgeReply -Config $Config -SessionId $sessionId `
-                 -AfterMessageId $baseline -TimeoutSeconds $timeout
+    $reply = Wait-BridgeReply -Config $Config -SessionId $target.SessionId `
+                 -AfterMessageId $target.MessageId -TimeoutSeconds $timeout
 
     if ($null -eq $reply) {
         # The prompt DID land in the TUI and may still be running. Say so precisely rather than
         # reporting a generic failure - the work is not lost, only the wait was.
-        return @{ Ok = $false; Reason = 'reply-timeout'; SessionId = $sessionId }
+        return @{ Ok = $false; Reason = 'reply-timeout'; SessionId = $target.SessionId }
     }
 
-    return @{ Ok = $true; Text = $reply; SessionId = $sessionId }
+    return @{ Ok = $true; Text = $reply; SessionId = $target.SessionId }
 }

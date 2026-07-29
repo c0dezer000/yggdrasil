@@ -51,8 +51,10 @@ remote messages keep going down the headless, agent-pinned path.
 
 ## Before you start — maturity of this path
 
-This is **new and only partly verified.** Be honest with yourself about that before wiring it
-into anything you depend on.
+The core mechanism was **confirmed working on a live test (2026-07-30)**: a Telegram message
+appeared in the attached terminal and was answered there, and the answer returned to the phone.
+Two defects that test exposed are fixed (session targeting, response encoding). Treat it as
+working-but-young rather than proven.
 
 | Behaviour | State |
 |---|---|
@@ -60,15 +62,17 @@ into anything you depend on.
 | Bridge stays off by default; malformed config stays off | Validated |
 | Falls back to the headless path when the server is down | Validated |
 | Session id persists and round-trips | Validated |
-| **`/tui/append-prompt` renders in an attached TUI** | **Unverified — the core unknown** |
-| `/api/session/active` populates when a TUI is attached | **Unverified** |
-| Reply detection (`time.completed`) fires | **Unverified** |
+| **`/tui/append-prompt` renders in an attached TUI** | **CONFIRMED** on 2026-07-30 live test |
+| `/api/session/active` populates when a TUI is attached | **NO — returns `{}` even with a TUI attached.** Bridge no longer uses it. |
+| Reply detection (`time.completed`) fires | **CONFIRMED** — field is populated; replies extract correctly |
 
-Everything testable without invoking a model passes. The three unverified items are the three
-that matter, and the likeliest first failure is **reply detection** — the prompt reaches the
-terminal and is answered there, but Telegram reports a timeout because the read-back never
-matches. If that happens, check the terminal: a visible answer means the bridge worked and only
-the read-back is wrong.
+What the live test changed: `/api/session/active` turned out to be useless on this build, so
+session targeting was rewritten to discover the session *after* submitting rather than choosing
+one beforehand. The response decoding was also wrong — see **Known limitations** — and both are
+now fixed.
+
+Still unproven: behaviour with a long-running task, with two TUIs attached, and after the
+server restarts underneath an attached TUI.
 
 ---
 
@@ -149,24 +153,39 @@ Send a follow-up and it joins the same conversation. The session stays alive.
 
 ## Session selection
 
-The bridge picks the target session in this order:
+**The bridge does not pick a session. It uses whichever one your TUI is already showing.**
 
-1. the session an attached TUI has in the foreground (`GET /api/session/active`)
-2. the session remembered in `work/remote-session.json`
-3. a **new** session titled "Remote channel"
+`/tui/append-prompt` types into the TUI's prompt box and `/tui/submit-prompt` submits it to the
+conversation on screen. Delivery never needed a session id — only reading the answer back does,
+and that is discovered *afterwards*:
 
-(1) is what puts the message in the conversation you are watching.
+1. snapshot every session's last-updated time **before** submitting
+2. submit
+3. poll for sessions that changed, and find the one whose newest user message is the prompt just
+   sent — that is the target
+4. wait there for the assistant's reply, then relay it to Telegram
 
-There is deliberately **no** "fall back to the most recently updated session" step. It sounds
-helpful and is not: on a first run it resolves to whatever was touched last — during testing
-that was an unrelated month-old conversation — and `/tui/select-session` would then pull your
-terminal into it and post a remote message there. Creating a session is predictable; adopting
-an arbitrary one is not.
+**This was learned the hard way.** The first design chose a session up front via
+`GET /api/session/active`. On this build that endpoint returns `{"data":{}}` **even with a TUI
+attached**, so the bridge fell through to creating a session and then called
+`/tui/select-session` — which navigated the terminal away from the live conversation into a
+fresh "Remote channel" one. Nothing was lost, but the conversation appeared to be cleared.
 
-**Expect this on first run:** if `/api/session/active` comes back empty, you get a fresh
-"Remote channel" session rather than the conversation you were already in. The id is then
-remembered, so it stays consistent afterwards. To target a specific conversation, navigate the
-TUI to it and send again — priority 1 should latch onto it.
+### `selectSession`
+
+Defaults to **false**, which is what you want: no navigation, the prompt joins the conversation
+in front of you.
+
+Set it `true` only to pin the remote channel to one dedicated conversation — it forces the TUI
+to jump to the last session the channel used before each submit.
+
+### If no TUI is attached
+
+The `/tui/*` calls still return 200 with nothing listening, so step 3 finds no session showing
+the prompt. The bridge then reports `delivery-unconfirmed` and Telegram is told to check the
+terminal. **It does not fall back to the headless path in this case** — the submit was accepted,
+so re-running the prompt headlessly could execute the same instruction twice. An unanswered
+message is recoverable; a duplicated one is not.
 
 ---
 

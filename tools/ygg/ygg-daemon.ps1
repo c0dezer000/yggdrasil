@@ -776,6 +776,15 @@ function Process-Message {
                 Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
                     -ExitCode 1 -Detail "session=$($bridgeResult.SessionId) reply-timeout"
             }
+            elseif ($bridgeResult.Reason -eq 'delivery-unconfirmed') {
+                # The /tui/ POSTs were accepted but no session shows the prompt - most likely no
+                # TUI is attached. Also NOT a fallback case: the submit was accepted, so running
+                # it headlessly risks executing the same instruction twice.
+                $output      = "Submitted to the terminal, but no session shows it. Check that a TUI is attached (opencode attach). Not retried, to avoid running it twice."
+                $bridgeStage = "bridge-unconfirmed"
+                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
+                    -ExitCode 1 -Detail "delivery-unconfirmed"
+            }
             else {
                 Write-Host "  Bridge unavailable ($($bridgeResult.Reason)); falling back to headless." -ForegroundColor DarkYellow
             }
@@ -819,6 +828,14 @@ function Process-Message {
                 Write-ExecutionLog -Agent "general" -Prompt $Text -Output $msg -ExitCode 1 -Detail "reply-timeout"
                 Send-TelegramMessage -ChatId $ChatId -Text $msg
                 Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge-timeout" -ResponseText $msg
+                return
+            }
+            if ($genResult.Reason -eq 'delivery-unconfirmed') {
+                # Same reasoning as the @-path: accepted submit, unconfirmed landing, no retry.
+                $msg = "Submitted to the terminal, but no session shows it. Check that a TUI is attached (opencode attach). Not retried, to avoid running it twice."
+                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $msg -ExitCode 1 -Detail "delivery-unconfirmed"
+                Send-TelegramMessage -ChatId $ChatId -Text $msg
+                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge-unconfirmed" -ResponseText $msg
                 return
             }
             Write-Host "  Bridge unavailable ($($genResult.Reason)); falling back to headless." -ForegroundColor DarkYellow

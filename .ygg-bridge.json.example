@@ -13,6 +13,6 @@
   "_comment_timeout": "How long to wait for the session to finish answering before telling the phone it is still working. The prompt is already in the terminal either way.",
   "replyTimeoutSeconds": 300,
 
-  "_comment_select": "Navigate the TUI to the target session before submitting, so the prompt is never delivered to a conversation that is off-screen.",
-  "selectSession": true
+  "_comment_select": "Leave this false. False means the prompt goes into whatever session your TUI is already showing - it continues the conversation you are looking at. Setting it true forces the terminal to JUMP to the last session the remote channel used before submitting, which is only useful if you want the remote channel pinned to one dedicated conversation. It defaulted to true once and that is what navigated the gardener away from their active conversation on the first live test.",
+  "selectSession": false
 }
