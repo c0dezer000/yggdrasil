@@ -56,7 +56,7 @@ into anything you depend on.
 
 | Behaviour | State |
 |---|---|
-| Server starts; `ygg serve` works | Validated |
+| Server starts; `ygg.ps1 serve` works | Validated |
 | Bridge stays off by default; malformed config stays off | Validated |
 | Falls back to the headless path when the server is down | Validated |
 | Session id persists and round-trips | Validated |
@@ -84,8 +84,8 @@ a test session and restoring them afterwards.
 ### 1. Start the shared server
 
 ```powershell
-ygg serve                 # foreground, Ctrl+C to stop
-ygg serve -Background     # hidden; logs to logs/opencode-server.log
+.\tools\ygg\ygg.ps1 serve                 # foreground, Ctrl+C to stop
+.\tools\ygg\ygg.ps1 serve -Background     # hidden; logs to logs/opencode-server.log
 ```
 
 It must run in the project root so `.opencode/agents/` and `opencode.json` resolve.
@@ -125,8 +125,8 @@ Add `"password"` if you set one on the server.
 ### 4. Restart the daemon
 
 ```powershell
-ygg daemon stop
-ygg daemon start
+.\tools\ygg\ygg.ps1 daemon stop
+.\tools\ygg\ygg.ps1 daemon start
 ```
 
 ---
@@ -186,7 +186,7 @@ singular, so there is no way to address a specific terminal. With two attached, 
 is undefined by the spec: it either broadcasts or lands on whichever the server considers
 current. Attach one and the question does not arise.
 
-The same applies to servers — do not run two. `ygg serve` refuses to bind a port that is
+The same applies to servers — do not run two. `ygg.ps1 serve` refuses to bind a port that is
 already listening, which prevents your TUI being on one server while the daemon talks to
 another.
 

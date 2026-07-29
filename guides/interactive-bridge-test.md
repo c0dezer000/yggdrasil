@@ -31,24 +31,52 @@ afterwards. Note that you are loosening a control while testing a path that waiv
 
 None of this is in your working copy. The bridge lives on `worktree-bridge-audit-fixes`.
 
+> **`ygg` is not on your PATH.** Every command below uses `.\tools\ygg\ygg.ps1` explicitly,
+> matching the other guides in this directory. There is a `ygg.cmd` dispatcher in
+> `tools\ygg\`, but that directory is not on PATH by default. For the short form in one
+> session: `$env:PATH += ';C:\projects\yggdrasil\tools\ygg'`
+
+### Option A — copy the files in (recommended; no branch switch)
+
+Least disruptive. Your working copy has uncommitted changes to the very files the branch
+replaces, so a checkout will refuse or conflict. The worktree is already on disk.
+
 ```powershell
 cd C:\projects\yggdrasil
 git status --porcelain > .\.bridge-test-pre-status.txt   # snapshot first
+$wt = '.\.claude\worktrees\bridge-audit-fixes'
+
+Copy-Item "$wt\tools\ygg\ygg-bridge-tui.ps1" .\tools\ygg\ -Force
+Copy-Item "$wt\tools\ygg\ygg-serve.ps1"      .\tools\ygg\ -Force
+Copy-Item "$wt\tools\ygg\ygg-daemon.ps1"     .\tools\ygg\ -Force
+Copy-Item "$wt\tools\ygg\ygg.ps1"            .\tools\ygg\ -Force
+Copy-Item "$wt\.ygg-bridge.json.example"     .\ -Force
+```
+
+Your pre-bridge `ygg-daemon.ps1` is preserved in commit `f92bfd2` on the branch, so nothing is
+lost by overwriting it.
+
+### Option B — switch to the branch
+
+```powershell
 git fetch origin
 git checkout worktree-bridge-audit-fixes
 ```
 
 **Expected:** checkout succeeds. If git refuses because of uncommitted changes to
 `ygg-daemon.ps1` and friends, commit or set them aside first — those are the very files the
-branch replaces.
+branch replaces. If that is awkward, use Option A.
 
-Confirm you have the new files:
+### Confirm, either way
 
 ```powershell
 Test-Path .\tools\ygg\ygg-bridge-tui.ps1, .\tools\ygg\ygg-serve.ps1, .\.ygg-bridge.json.example
+.\tools\ygg\ygg.ps1 2>&1 | Select-String 'serve'
 ```
 
-**Expected:** `True True True`. If any is `False`, you are on the wrong branch.
+**Expected:** `True True True`, and a `serve` line in the subcommand list. If `serve` is
+absent you are running the old `ygg.ps1` and every later step will fail with
+*"Unknown subcommand: serve"*.
 
 ---
 
@@ -57,7 +85,7 @@ Test-Path .\tools\ygg\ygg-bridge-tui.ps1, .\tools\ygg\ygg-serve.ps1, .\.ygg-brid
 ### A1. Server starts
 
 ```powershell
-ygg serve -Background
+.\tools\ygg\ygg.ps1 serve -Background
 Get-NetTCPConnection -LocalPort 4096 -State Listen | Select-Object LocalPort, OwningProcess
 ```
 
@@ -115,7 +143,7 @@ the bridge misbehaves you know the fallback is sound.
 ### B1. Headless path still answers
 
 ```powershell
-ygg daemon stop; ygg daemon start
+.\tools\ygg\ygg.ps1 daemon stop; .\tools\ygg\ygg.ps1 daemon start
 ```
 
 From Telegram, send: `what is the current phase?`
@@ -137,7 +165,7 @@ Already proven by B1 — the bridge was never consulted. Confirmed if the termin
 
 ```powershell
 Set-Content .\.ygg-bridge.json -Value '{ not valid json' -Encoding UTF8
-ygg daemon stop; ygg daemon start
+.\tools\ygg\ygg.ps1 daemon stop; .\tools\ygg\ygg.ps1 daemon start
 ```
 
 Send from Telegram: `what is the current phase?`
@@ -151,7 +179,7 @@ control. If the bridge activates here, **stop and report it.**
 
 ```powershell
 Set-Content .\.ygg-bridge.json -Value '{"enabled":true,"agentPinningWaived":false,"url":"http://127.0.0.1:4096"}' -Encoding UTF8
-ygg daemon stop; ygg daemon start
+.\tools\ygg\ygg.ps1 daemon stop; .\tools\ygg\ygg.ps1 daemon start
 ```
 
 Send: `what is the current phase?`
@@ -174,7 +202,7 @@ Edit `.ygg-bridge.json` and set **both** `enabled` and `agentPinningWaived` to `
 
 ```powershell
 Get-Content .\.ygg-bridge.json | ConvertFrom-Json | Select-Object enabled, agentPinningWaived, url
-ygg daemon stop; ygg daemon start
+.\tools\ygg\ygg.ps1 daemon stop; .\tools\ygg\ygg.ps1 daemon start
 ```
 
 **Expected:** `True True http://127.0.0.1:4096`.
@@ -265,7 +293,7 @@ Get-Content .\work\remote-session.json
 ### D3. It survives a daemon restart
 
 ```powershell
-ygg daemon stop; ygg daemon start
+.\tools\ygg\ygg.ps1 daemon stop; .\tools\ygg\ygg.ps1 daemon start
 ```
 
 Send: `still there?`
@@ -357,7 +385,7 @@ log. **The channel must degrade, not break.**
 ### F2. Recovery
 
 ```powershell
-ygg serve -Background
+.\tools\ygg\ygg.ps1 serve -Background
 ```
 
 Re-attach the TUI, send another message.
@@ -404,7 +432,7 @@ features.
 
 ```powershell
 Set-Content .\.ygg-bridge.json -Value '{"enabled":false}' -Encoding UTF8
-ygg daemon stop; ygg daemon start
+.\tools\ygg\ygg.ps1 daemon stop; .\tools\ygg\ygg.ps1 daemon start
 ```
 
 Back to the headless, agent-pinned path. To leave the branch entirely:
