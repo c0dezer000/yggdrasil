@@ -89,9 +89,21 @@ switch ($resolvedSubcommand.ToLower()) {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-embed.ps1") @resolvedArgs
         exit $LASTEXITCODE
     }
-    "check-queue" {
-        & (Join-Path -Path $scriptDir -ChildPath "ygg-check-queue.ps1") @resolvedArgs
+    "serve" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-serve.ps1") @resolvedArgs
         exit $LASTEXITCODE
+    }
+    "check-queue" {
+        # Removed. The task queue was a handoff to a consumer that never existed: this
+        # subcommand was the ONLY reader of work\task-queue.md, and it ran only when a human
+        # typed it. The interactive bridge replaces it -- see guides/interactive-bridge.md.
+        Write-Host "'ygg check-queue' has been removed." -ForegroundColor Yellow
+        Write-Host "The @odin task queue it served required a human to run it, so unattended" -ForegroundColor Gray
+        Write-Host "requests always timed out. Remote prompts now go to the running session:" -ForegroundColor Gray
+        Write-Host "  ygg serve                              # start the shared opencode server" -ForegroundColor Cyan
+        Write-Host "  opencode attach http://127.0.0.1:4096  # your visible session" -ForegroundColor Cyan
+        Write-Host "See guides/interactive-bridge.md" -ForegroundColor Gray
+        exit 1
     }
     default {
         if ($resolvedSubcommand) {
@@ -114,7 +126,7 @@ switch ($resolvedSubcommand.ToLower()) {
         Write-Host "  session-state  Update or clear the ephemeral session-state file (manual invocation only)" -ForegroundColor Gray
         Write-Host "  retrieve      Look up file paths by topic in the knowledge index (grep-based)" -ForegroundColor Gray
         Write-Host "  embed         Re-embed all seed markdown files using nomic-embed-text via Ollama" -ForegroundColor Gray
-        Write-Host "  check-queue   Check Telegram task queue for local session execution" -ForegroundColor Gray
+        Write-Host "  serve         Start the shared opencode server for the interactive remote bridge" -ForegroundColor Gray
         exit 1
     }
 }

@@ -37,6 +37,16 @@ $pidFile        = Join-Path -Path $yggRoot -ChildPath ".ygg-daemon.pid"
 $stopSignalFile = Join-Path -Path $yggRoot -ChildPath ".ygg-daemon-stop"
 $statusFile     = Join-Path -Path $yggRoot -ChildPath ".ygg-daemon.json"
 
+# Interactive bridge (Option E). Delivers remote prompts into the VISIBLE opencode TUI via a
+# running `opencode serve`, instead of spawning a headless `opencode run` nobody can see.
+# Disabled unless .ygg-bridge.json opts in twice; see the governance note in the module.
+$bridgeModule = Join-Path -Path $scriptDir -ChildPath "ygg-bridge-tui.ps1"
+if (Test-Path -LiteralPath $bridgeModule -PathType Leaf) {
+    . $bridgeModule
+} else {
+    Write-Host "  [WARN] ygg-bridge-tui.ps1 not found - interactive bridge unavailable." -ForegroundColor DarkYellow
+}
+
 # =====================================================================
 # TOKEN RETRIEVAL - same pattern as ygg-listen.ps1
 # =====================================================================
@@ -123,6 +133,46 @@ function Write-MessageLog {
         Add-Content -Path $logFile -Value "`r`n$entry" -Encoding UTF8
     } else {
         Set-Content -Path $logFile -Value $entry -Encoding UTF8
+    }
+}
+
+function Write-ExecutionLog {
+    <#
+    .SYNOPSIS
+      Appends one line to logs/remote/execution-YYYY-MM-DD.md - the audit transcript for every
+      agent invocation made from the remote channel.
+    .DESCRIPTION
+      This used to be written inside a Start-Job scriptblock that referenced $agentPrompt
+      without passing it in ArgumentList. Job scriptblocks do not inherit caller scope, so the
+      variable was null, .Substring() threw, and every line recorded 'input=' empty -- the one
+      field that made the file an audit record. Writing it in caller scope removes that whole
+      class of bug, and both delivery paths now log identically.
+    #>
+    param(
+        [string]$Agent,
+        [string]$Prompt,
+        [string]$Output,
+        [int]$ExitCode = 0,
+        [string]$Detail = ""
+    )
+
+    try {
+        if (-not (Test-Path -LiteralPath $remoteLogDir -PathType Container)) {
+            New-Item -ItemType Directory -Path $remoteLogDir -Force | Out-Null
+        }
+        $logFile = Join-Path -Path $remoteLogDir -ChildPath "execution-$((Get-Date).ToString('yyyy-MM-dd')).md"
+
+        # One entry, one line, bounded length -- same rule as Write-MessageLog. Remote text with
+        # an embedded newline must not be able to forge a second audit entry.
+        $flat = (($Prompt -replace '[\r\n]+', ' ')).Trim()
+        if ($flat.Length -gt 80) { $flat = $flat.Substring(0, 80) }
+
+        $line = "$(Get-Date -Format 'HH:mm:ss') | @$Agent | exit=$ExitCode | input=$flat | output_len=$($Output.Length)"
+        if ($Detail) { $line += " | $Detail" }
+
+        Add-Content -Path $logFile -Value $line -Encoding UTF8
+    } catch {
+        Write-Host "  [WARN] execution log write failed: $($_.Exception.Message)" -ForegroundColor DarkYellow
     }
 }
 
@@ -386,9 +436,32 @@ function Invoke-OpenCodeRun {
             return "The remote channel could not reach its designated read-only agent, so the request was refused rather than answered by an unrestricted one. This needs a local session to fix."
         }
 
-        # Strip ANSI, headers, collapse blanks
-        $output = $output -replace '\e\[[\d;]*[a-zA-Z]', ''
-        $output = $output -replace '(?m)^\s*>.*$', ''
+        $output = Format-RemoteOutput -Text $output
+    } catch {
+        $output = "Execution failed: $($_.Exception.Message)"
+    }
+
+    return $output.Trim()
+}
+
+function Format-RemoteOutput {
+    <#
+    .SYNOPSIS
+      Sanitises agent output for delivery to a phone.
+    .DESCRIPTION
+      Extracted from Invoke-OpenCodeRun so the interactive bridge gets the identical treatment.
+      When this lived inline, anything that did not go through `opencode run` bypassed every
+      one of these fixes -- so a second delivery path would have re-introduced the raw ANSI,
+      mojibake and literal markdown that [E73][E76] were opened for.
+    #>
+    param([string]$Text)
+
+    $output = $Text
+    if ($null -eq $output) { $output = '' }
+
+    # Strip ANSI, headers, collapse blanks
+    $output = $output -replace '\e\[[\d;]*[a-zA-Z]', ''
+    $output = $output -replace '(?m)^\s*>.*$', ''
 
         # ---- Strip opencode's tool-trace lines [E76] ----
         # The model's file reads were being relayed to the gardener as part of the answer:
@@ -441,12 +514,9 @@ function Invoke-OpenCodeRun {
         $output = $output -replace '\r?\n\s*\r?\n', "`r`n"
         $output = $output.Trim()
         
-        # If output is just "True" or empty, indicate timeout/failure
-        if ([string]::IsNullOrWhiteSpace($output) -or $output -eq "True") {
-            $output = "Command produced no output. The prompt may be too long or the model timed out."
-        }
-    } catch {
-        $output = "Execution failed: $($_.Exception.Message)"
+    # If output is just "True" or empty, indicate timeout/failure
+    if ([string]::IsNullOrWhiteSpace($output) -or $output -eq "True") {
+        $output = "Command produced no output. The prompt may be too long or the model timed out."
     }
 
     # Truncate for Telegram
@@ -677,92 +747,87 @@ function Process-Message {
         # Prompt goes via file, not -p. No quote escaping, no splitting hazard. [E74]
         $agentPromptFile = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath "ygg-prompt-$(Get-Random).txt"
 
-        if ($agentName -eq "odin") {
-            # ---- File-based handoff to local session ----
-            # Write the task to a queue file. The local session picks it up and executes it.
-            # The daemon stays responsive because polling happens in a background job.
-            $taskId = "task-$(Get-Date -Format 'yyyyMMdd-HHmmss-ffff')"
-            $taskTimestamp = Get-Timestamp
-            $taskQueueFile  = Join-Path -Path $yggRoot -ChildPath "work\task-queue.md"
-            # One result file PER TASK [audit]. A single shared work\task-result.md let two
-            # concurrent poll jobs read the same file: whichever matched first deleted it, so the
-            # other waited out its full 300s and reported a timeout for a task that had completed.
-            # It also allowed a stale result to be delivered against a newer task id.
-            $taskResultFile = Join-Path -Path $yggRoot -ChildPath "work\task-result-$taskId.md"
-            $workDir = Join-Path -Path $yggRoot -ChildPath "work"
+        # ---- Interactive bridge first, headless second ----
+        # The task-queue handoff that used to live here has been removed. It wrote
+        # work\task-queue.md and waited 300s for a result file, but NOTHING read that queue:
+        # ygg-check-queue.ps1 was reachable only by a human typing `ygg check-queue`. No hook,
+        # no scheduled task, no watcher, no call from this daemon. Unattended, every @odin
+        # request timed out by construction. Replaced by the bridge, which delivers the prompt
+        # into the running TUI and reads the answer back over HTTP.
+        $output      = $null
+        $bridgeStage = $null
+        $bridgeCfg   = Get-BridgeConfig -Root $yggRoot
 
-            if (-not (Test-Path -LiteralPath $workDir -PathType Container)) {
-                New-Item -ItemType Directory -Path $workDir -Force | Out-Null
+        if (Test-BridgeEnabled -Config $bridgeCfg) {
+            Write-Host "  Routing @$agentName through the interactive bridge" -ForegroundColor DarkCyan
+            $bridgeResult = Invoke-TuiBridge -Config $bridgeCfg -Root $yggRoot -Text $agentPrompt
+
+            if ($bridgeResult.Ok) {
+                $output      = Format-RemoteOutput -Text $bridgeResult.Text
+                $bridgeStage = "bridge"
+                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
+                    -ExitCode 0 -Detail "session=$($bridgeResult.SessionId)"
             }
+            elseif ($bridgeResult.Reason -eq 'reply-timeout') {
+                # The prompt DID reach the terminal and may still be running. Do NOT fall back to
+                # the headless path here: that would run the same instruction a second time.
+                $output      = "Sent to the session, but no answer within $($bridgeCfg.replyTimeoutSeconds)s. It may still be working - check the terminal."
+                $bridgeStage = "bridge-timeout"
+                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
+                    -ExitCode 1 -Detail "session=$($bridgeResult.SessionId) reply-timeout"
+            }
+            else {
+                Write-Host "  Bridge unavailable ($($bridgeResult.Reason)); falling back to headless." -ForegroundColor DarkYellow
+            }
+        }
 
-            # Append the task to the queue (pipe-delimited: taskId|timestamp|prompt), one per line.
-            # This was WriteAllText, which truncated the file: a second @odin message arriving
-            # before the first was picked up silently destroyed the first task, and its poll job
-            # then ran the full 300s and reported a timeout. Newlines are stripped from the prompt
-            # so one task can never occupy more than one line, or forge a second queue entry.
-            $flatPrompt = ($agentPrompt -replace '[\r\n]+', ' ').Trim()
-            $taskContent = "$taskId|$taskTimestamp|$flatPrompt"
-            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-            [System.IO.File]::AppendAllText($taskQueueFile, $taskContent + "`r`n", $utf8NoBom)
-            Write-Host "  Task $taskId queued for local session" -ForegroundColor DarkCyan
-
-            # Spawn background job to poll for result — daemon stays responsive.
-            # $agentPrompt is passed IN: a Start-Job scriptblock does not inherit caller scope, so
-            # the previous `$agentPrompt.Substring(...)` threw on a null and the execution
-            # transcript recorded 'input=' with the prompt missing -- the one field that made the
-            # log an audit record. Truncation happens here, in the caller's scope.
-            $promptExcerpt = $flatPrompt.Substring(0, [Math]::Min(80, $flatPrompt.Length))
-            $null = Start-Job -Name "task-poll-$taskId" -ScriptBlock {
-                param($taskId, $taskResultFile, $yggRoot, $ChatId, $tgToken, $promptExcerpt)
-                $pollStart = Get-Date
-                $output = $null
-                while (((Get-Date) - $pollStart).TotalSeconds -lt 300 -and -not $output) {
-                    Start-Sleep -Seconds 10
-                    if (Test-Path -LiteralPath $taskResultFile -PathType Leaf) {
-                        $rc = Get-Content -Path $taskResultFile -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
-                        if ($rc -match "(?m)^TASK_ID:\s*$([regex]::Escape($taskId))\s*$") {
-                            if ($rc -match '(?s)RESULT:\s*\r?\n(.+?)\r?\nEND') {
-                                $output = $matches[1].Trim()
-                                Remove-Item -Path $taskResultFile -Force -ErrorAction SilentlyContinue
-                            }
-                        }
-                    }
-                }
-                $timedOut = -not $output
-                if ($timedOut) { $output = "Task timed out (300s). The task may still be pending." }
-                $body = @{ chat_id = $ChatId; text = $output } | ConvertTo-Json
-                $null = Invoke-RestMethod -Uri "https://api.telegram.org/bot${tgToken}/sendMessage" -Method Post -Body $body -ContentType "application/json" -ErrorAction SilentlyContinue
-                $logDirRemote = Join-Path -Path $yggRoot -ChildPath "logs\remote"
-                if (-not (Test-Path -LiteralPath $logDirRemote -PathType Container)) {
-                    New-Item -ItemType Directory -Path $logDirRemote -Force | Out-Null
-                }
-                $el = Join-Path -Path $logDirRemote -ChildPath "execution-$(Get-Date -Format 'yyyy-MM-dd').md"
-                # exit was hardcoded to 0 even on timeout, so a failed execution was logged as a
-                # success. Report the real outcome.
-                $exitCode = if ($timedOut) { 1 } else { 0 }
-                "$(Get-Date -Format 'HH:mm:ss') | @odin | exit=$exitCode | task=$taskId | input=$promptExcerpt | output_len=$($output.Length)" | Out-File $el -Encoding UTF8 -Append
-            } -ArgumentList $taskId, $taskResultFile, $yggRoot, $ChatId, $script:tgToken, $promptExcerpt
-
-            # Single acknowledgement. There were two: this one and a "Task queued. Executing in
-            # session..." sent above, so every remote execution produced two near-identical
-            # Telegram messages before any work had started.
-            $output = "Task queued (ID: $taskId). I will send the result when the session completes."
-        } else {
-            # Existing ratatoskr path unchanged
+        if ($null -eq $output) {
+            # Headless fallback. Pinned to an explicit agent and fails closed if the flag does
+            # not bind [E75], so remote text still cannot reach the host default agent.
             $agentPrompt | Out-File -FilePath $agentPromptFile -Encoding UTF8 -Force
             $output = Invoke-OpenCodeRun -AgentName $agentName -ChatId $ChatId -PromptFile $agentPromptFile
+            $bridgeStage = "headless"
+            Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output -ExitCode 0
         }
 
         if (Test-Path $agentPromptFile) { Remove-Item $agentPromptFile -Force -ErrorAction SilentlyContinue }
-        $stageTag = "agent-$agentName"
+        $stageTag = "agent-$agentName-$bridgeStage"
     } else {
         # === General prompt with project context ===
         Write-Host "  Processing general prompt from $ChatId" -ForegroundColor DarkCyan
-        
+
+        # ---- Interactive bridge, if enabled ----
+        # When the prompt joins the real TUI session, the session itself holds the history, so
+        # none of the context assembly below is needed -- and the synthetic
+        # "[Conversation so far:]" replay must NOT be sent. That replay is a reconstruction from
+        # $script:conversationHistory with assistant turns truncated to 200 characters; pasting
+        # it into a session that already remembers the exchange would show the gardener a
+        # mangled copy of their own conversation inside their own terminal.
+        $bridgeCfgGen = Get-BridgeConfig -Root $yggRoot
+        if (Test-BridgeEnabled -Config $bridgeCfgGen) {
+            $genResult = Invoke-TuiBridge -Config $bridgeCfgGen -Root $yggRoot -Text $Text
+            if ($genResult.Ok) {
+                $output = Format-RemoteOutput -Text $genResult.Text
+                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $output `
+                    -ExitCode 0 -Detail "session=$($genResult.SessionId)"
+                Send-TelegramMessage -ChatId $ChatId -Text $output
+                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge" -ResponseText $output
+                return
+            }
+            if ($genResult.Reason -eq 'reply-timeout') {
+                $msg = "Sent to the session, but no answer within $($bridgeCfgGen.replyTimeoutSeconds)s. It may still be working - check the terminal."
+                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $msg -ExitCode 1 -Detail "reply-timeout"
+                Send-TelegramMessage -ChatId $ChatId -Text $msg
+                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge-timeout" -ResponseText $msg
+                return
+            }
+            Write-Host "  Bridge unavailable ($($genResult.Reason)); falling back to headless." -ForegroundColor DarkYellow
+        }
+
         # Build project context + conversation history
         $contextLines = @()
         $contextLines += "[Project: Yggdrasil governed companion seed]"
-        
+
         # Read SLICES.md for phase status
         $slicesPath = Join-Path -Path $scriptDir -ChildPath "..\..\roadmap\SLICES.md"
         $unitPath = $null
