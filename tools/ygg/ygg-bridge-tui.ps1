@@ -398,6 +398,140 @@ function Send-BridgePrompt {
     return $true
 }
 
+function Get-BridgeReplyIfReady {
+    <#
+    .SYNOPSIS
+      One non-blocking check for a finished assistant reply after $AfterMessageId.
+      Returns the text, or $null if the turn is not complete yet.
+    .DESCRIPTION
+      The polling twin of Wait-BridgeReply, for the daemon's tick-driven servicing. Wait-
+      BridgeReply sleeps in a loop, which is fine for a synchronous caller and fatal for the
+      daemon loop - it stops Telegram polling for the duration, so a permission prompt can never
+      be answered.
+    #>
+    param($Config, [string]$SessionId, [string]$AfterMessageId)
+
+    $msgs = Invoke-BridgeApi -Config $Config -Path "/session/$SessionId/message" -Method Get -TimeoutSec 30
+    if (-not $msgs) { return $null }
+    $all = @($msgs)
+
+    $tail = $all
+    if ($AfterMessageId) {
+        $idx = -1
+        for ($i = 0; $i -lt $all.Count; $i++) {
+            if ($all[$i].info.id -eq $AfterMessageId) { $idx = $i; break }
+        }
+        if ($idx -ge 0) {
+            if ($idx -ge $all.Count - 1) { return $null }
+            $tail = $all[($idx + 1)..($all.Count - 1)]
+        }
+    }
+
+    $assistant = @($tail) | Where-Object { $_.info.role -eq 'assistant' } | Select-Object -Last 1
+    if (-not $assistant) { return $null }
+    if (-not $assistant.info.time -or -not $assistant.info.time.completed) { return $null }
+
+    $text = (@($assistant.parts) |
+             Where-Object { $_.type -eq 'text' -and -not $_.synthetic -and -not $_.ignored } |
+             ForEach-Object { $_.text }) -join "`n"
+
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+    return $text.Trim()
+}
+
+function Get-BridgePendingPermission {
+    <#
+    .SYNOPSIS
+      Returns the pending permission request for $SessionId, or $null.
+    .DESCRIPTION
+      When the agent needs approval - reading outside the project directory, running a command,
+      writing somewhere new - opencode raises a permission request and BLOCKS until a human
+      answers it in the TUI. A remote sender cannot see that dialog, so before this existed the
+      request simply hung until the reply timeout while the terminal sat on a prompt nobody
+      remote knew about.
+
+      Observed live on 2026-07-30:
+        permission: external_directory
+        patterns:   C:\Users\<user>\AppData\Local\Temp\opencode\*
+
+      GET /permission lists every pending request across sessions; we filter to ours.
+    #>
+    param($Config, [string]$SessionId)
+
+    $pending = Invoke-BridgeApi -Config $Config -Path '/permission' -Method Get -TimeoutSec 15
+    if (-not $pending) { return $null }
+
+    foreach ($p in @($pending)) {
+        if ($p.id -match '^per' -and (-not $SessionId -or $p.sessionID -eq $SessionId)) {
+            return $p
+        }
+    }
+    return $null
+}
+
+function Format-BridgePermission {
+    <#
+    .SYNOPSIS
+      Renders a permission request as a short plain-text message for a phone.
+    #>
+    param($Permission)
+
+    $what = if ($Permission.permission) { $Permission.permission } else { 'unknown' }
+    $lines = @()
+    $lines += "Permission needed before I can continue."
+    $lines += ""
+    $lines += "Type: $what"
+
+    if ($Permission.metadata -and $Permission.metadata.filepath) {
+        $lines += "Path: $($Permission.metadata.filepath)"
+    } elseif ($Permission.patterns) {
+        $lines += "Path: $((@($Permission.patterns))[0])"
+    }
+
+    $lines += ""
+    $lines += "Reply with one of:"
+    $lines += "  allow   - just this once"
+    $lines += "  always  - and remember it"
+    $lines += "  reject  - refuse"
+
+    return ($lines -join "`n")
+}
+
+function Send-BridgePermissionReply {
+    <#
+    .SYNOPSIS
+      Answers a pending permission request. $Decision is once | always | reject.
+    .DESCRIPTION
+      Deliberately has no auto-approve path. opencode's own `run --auto` flag is documented as
+      "auto-approve permissions that are not explicitly denied (dangerous!)"; wiring that to an
+      untrusted remote channel would mean remote text could authorise the agent to read outside
+      the project or run commands with nobody deciding. The human always decides - the bridge
+      only carries the question and the answer.
+    #>
+    param($Config, [string]$RequestId, [string]$Decision)
+
+    if ($Decision -notin @('once','always','reject')) { return $false }
+
+    return (Invoke-BridgeAction -Config $Config -Path "/permission/$RequestId/reply" `
+                -Body @{ reply = $Decision } -TimeoutSec 20)
+}
+
+function ConvertTo-BridgeDecision {
+    <#
+    .SYNOPSIS
+      Maps what a human actually types on a phone to the API's enum. Returns $null if the text
+      is not a decision, so an ordinary message is never mistaken for one.
+    #>
+    param([string]$Text)
+
+    switch -Regex (($Text | ForEach-Object { $_ }).Trim().ToLower()) {
+        '^(allow|yes|y|ok|once|approve|allow once)$'      { return 'once' }
+        '^(always|allow always|remember|yes always)$'      { return 'always' }
+        '^(reject|no|n|deny|refuse|cancel)$'               { return 'reject' }
+        default                                            { return $null }
+    }
+}
+
 function Wait-BridgeReply {
     <#
     .SYNOPSIS

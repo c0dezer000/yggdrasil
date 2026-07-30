@@ -279,13 +279,57 @@ A `stage: agent-odin-bridge` line in `logs/remote/listener-*.md` means the bridg
 
 ---
 
-## Known limitations
+## Permission prompts
 
-**The bridge path is synchronous.** `Invoke-TuiBridge` runs inline in `Process-Message`, so a
-long-running task blocks *all* Telegram polling for up to `replyTimeoutSeconds`. The removed
-`@odin` queue path was asynchronous (`Start-Job`), so this is a regression on that one axis.
-A large request — "create a React dashboard" — will trip it. Fixing it means rebuilding the
-async result-delivery path, which is a deliberate change rather than a patch.
+When the agent needs approval — reading outside the project directory, running a command,
+writing somewhere new — opencode raises a permission dialog **and blocks until a human answers
+it**. That dialog is visible only in the terminal. A remote sender sees nothing; the turn simply
+never completes.
+
+Observed live on 2026-07-30:
+
+```
+Permission required
+  Access external directory C:\Users\...\AppData\Local\Temp\opencode
+  Allow once | Allow always | Reject
+```
+
+The bridge now relays these. When a request appears for the session it is waiting on, you get:
+
+```
+Permission needed before I can continue.
+
+Type: external_directory
+Path: C:\Users\...\Temp\opencode\check-bom.ps1
+
+Reply with one of:
+  allow   - just this once
+  always  - and remember it
+  reject  - refuse
+```
+
+Reply with any of `allow` / `yes` / `ok` / `once`, `always` / `remember`, or
+`reject` / `no` / `deny` / `cancel`. The decision is posted to
+`POST /permission/{id}/reply` and the session continues.
+
+**There is no auto-approve, and there will not be one.** opencode's `run --auto` flag is
+documented as *"auto-approve permissions that are not explicitly denied (dangerous!)"*. Wiring
+that to an untrusted remote channel would let remote text authorise the agent to read outside
+the project or run commands with nobody deciding. The bridge carries the question and the
+answer; the human decides.
+
+Matching is **exact and anchored**, so an instruction that merely contains the word is not
+mistaken for consent — `allowance` and `allow the deploy` are both treated as ordinary messages,
+not approvals. Anything that is not a recognised decision falls through and is handled as a
+normal message, so you are never trapped in a mode you cannot leave. Answering in the terminal
+instead works too — the bridge notices the request is gone and resumes.
+
+While a decision is outstanding the deadline extends to 15 minutes, since a human has to read
+and answer.
+
+---
+
+## Known limitations
 
 **The agent is whatever the TUI has selected.** This is the waiver described at the top. If
 your TUI is sitting on odin, remote Telegram text drives odin with full tools. The headless

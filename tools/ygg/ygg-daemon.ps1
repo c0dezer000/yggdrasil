@@ -91,6 +91,16 @@ $script:pollOffset          = 0
 $script:rateLimitTracker    = @{}   # ChatId -> timestamp of last request
 $script:conversationHistory = @{}   # ChatId -> list of last 10 exchanges ("user: ..." / "bot: ...")
 
+# ChatId -> in-flight interactive-bridge request. The bridge USED to block inside
+# Process-Message until the agent answered, which meant the daemon stopped polling Telegram for
+# the whole wait. That was survivable until permission prompts: opencode blocks on an approval
+# dialog the remote sender cannot see, and the daemon could not receive the reply because it was
+# busy waiting for the answer that the reply would unblock. A deadlock by construction.
+#
+# Requests are now registered here and serviced by Update-PendingBridgeRequests on each daemon
+# tick, so polling never stops.
+$script:pendingBridge = @{}
+
 # =====================================================================
 # HELPER FUNCTIONS
 # =====================================================================
@@ -527,6 +537,127 @@ function Format-RemoteOutput {
     return $output.Trim()
 }
 
+function Start-BridgeRequest {
+    <#
+    .SYNOPSIS
+      Submits a prompt into the attached TUI and registers the wait. Does NOT block.
+    .OUTPUTS
+      $true  - submitted and registered; the reply will arrive later via
+               Update-PendingBridgeRequests.
+      $false - nothing was submitted; the caller may safely fall back to the headless path.
+    #>
+    param([string]$Text, [string]$ChatId, [string]$Agent, $Config)
+
+    if (-not (Test-BridgeServer -Config $Config)) {
+        Write-Host "  Bridge unavailable (server-unreachable); falling back to headless." -ForegroundColor DarkYellow
+        return $false
+    }
+
+    $snapshot = Get-BridgeSessionSnapshot -Config $Config
+    $pinned   = if ($Config.selectSession) { Get-BridgeRememberedSessionId -Root $yggRoot } else { $null }
+
+    if (-not (Send-BridgePrompt -Config $Config -Text $Text -SessionId $pinned)) {
+        Write-Host "  Bridge unavailable (submit-failed); falling back to headless." -ForegroundColor DarkYellow
+        return $false
+    }
+
+    $target = Find-BridgeTargetSession -Config $Config -Snapshot $snapshot -Text $Text -TimeoutSeconds 20
+    if ($null -eq $target) {
+        # Submitted but nothing shows it - most likely no TUI attached. Not a fallback case:
+        # re-running headlessly could execute the same instruction twice.
+        $msg = "Submitted to the terminal, but no session shows it. Check that a TUI is attached (opencode attach). Not retried, to avoid running it twice."
+        Send-TelegramMessage -ChatId $ChatId -Text $msg
+        Write-ExecutionLog -Agent $Agent -Prompt $Text -Output $msg -ExitCode 1 -Detail 'delivery-unconfirmed'
+        Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "bridge-unconfirmed" -ResponseText $msg
+        return $true   # handled - do not fall back
+    }
+
+    Save-BridgeSessionId -Root $yggRoot -SessionId $target.SessionId
+
+    $timeout = if ($Config.replyTimeoutSeconds -gt 0) { [int]$Config.replyTimeoutSeconds } else { 300 }
+    $script:pendingBridge[$ChatId] = @{
+        SessionId      = $target.SessionId
+        AfterMessageId = $target.MessageId
+        Deadline       = (Get-Date).AddSeconds($timeout)
+        Agent          = $Agent
+        Prompt         = $Text
+        PermissionId   = $null
+        Config         = $Config
+    }
+
+    Write-Host "  Bridge request registered for $ChatId (session $($target.SessionId))" -ForegroundColor DarkCyan
+    return $true
+}
+
+function Update-PendingBridgeRequests {
+    <#
+    .SYNOPSIS
+      Serviced on every daemon tick. Relays permission prompts, delivers replies, expires
+      requests that overran. Never blocks for more than one API round-trip.
+    #>
+    if ($script:pendingBridge.Count -eq 0) { return }
+
+    foreach ($chatId in @($script:pendingBridge.Keys)) {
+        $req = $script:pendingBridge[$chatId]
+        if (-not $req) { continue }
+        $cfg = $req.Config
+
+        # ---- 1. Is the agent blocked on a permission dialog? ----
+        # This is the whole reason the wait had to become asynchronous. The dialog is visible
+        # only in the terminal; the remote sender sees nothing and the turn never completes.
+        if (-not $req.PermissionId) {
+            $perm = Get-BridgePendingPermission -Config $cfg -SessionId $req.SessionId
+            if ($perm) {
+                $req.PermissionId = $perm.id
+                $req.Deadline     = (Get-Date).AddSeconds(900)   # a human has to read and answer
+                $script:pendingBridge[$chatId] = $req
+
+                $msg = Format-BridgePermission -Permission $perm
+                Send-TelegramMessage -ChatId $chatId -Text $msg
+                Write-MessageLog -MessageText "(permission request)" -FromUser $chatId `
+                    -Stage "bridge-permission" -ResponseText $msg
+                Write-Host "  Permission $($perm.id) relayed to $chatId" -ForegroundColor Yellow
+                continue
+            }
+        } else {
+            # Already relayed. If it is no longer pending, it was answered - here or in the
+            # terminal - so resume waiting for the assistant.
+            $still = Get-BridgePendingPermission -Config $cfg -SessionId $req.SessionId
+            if (-not $still -or $still.id -ne $req.PermissionId) {
+                $req.PermissionId = $null
+                $req.Deadline     = (Get-Date).AddSeconds(300)
+                $script:pendingBridge[$chatId] = $req
+                Write-Host "  Permission resolved; resuming wait for $chatId" -ForegroundColor DarkCyan
+            }
+            continue   # nothing to deliver while approval is outstanding
+        }
+
+        # ---- 2. Has the assistant finished? ----
+        $reply = Get-BridgeReplyIfReady -Config $cfg -SessionId $req.SessionId -AfterMessageId $req.AfterMessageId
+        if ($reply) {
+            $output = Format-RemoteOutput -Text $reply
+            Send-TelegramMessage -ChatId $chatId -Text $output
+            Write-ExecutionLog -Agent $req.Agent -Prompt $req.Prompt -Output $output `
+                -ExitCode 0 -Detail "session=$($req.SessionId)"
+            Write-MessageLog -MessageText $req.Prompt -FromUser $chatId `
+                -Stage "bridge" -ResponseText $output
+            $script:pendingBridge.Remove($chatId)
+            continue
+        }
+
+        # ---- 3. Overran ----
+        if ((Get-Date) -gt $req.Deadline) {
+            $msg = "Sent to the session, but no answer yet. It may still be working - check the terminal."
+            Send-TelegramMessage -ChatId $chatId -Text $msg
+            Write-ExecutionLog -Agent $req.Agent -Prompt $req.Prompt -Output $msg `
+                -ExitCode 1 -Detail "session=$($req.SessionId) reply-timeout"
+            Write-MessageLog -MessageText $req.Prompt -FromUser $chatId `
+                -Stage "bridge-timeout" -ResponseText $msg
+            $script:pendingBridge.Remove($chatId)
+        }
+    }
+}
+
 function Process-Message {
     <#
     .SYNOPSIS
@@ -550,6 +681,40 @@ function Process-Message {
         Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "blocked-unauthorized-sender"
         Write-Host "  REFUSED: message from unauthorized chat $ChatId" -ForegroundColor Red
         return
+    }
+
+    # ---- Stage 0b: permission decision ----
+    # If this chat is blocked on a permission dialog, the next message is read as the decision,
+    # not as a new prompt. Placed ahead of every gate deliberately: 'reject' must always get
+    # through, and the words involved (allow/always/reject) are a closed set that cannot be
+    # confused with an instruction. Anything that is NOT a decision falls through and is treated
+    # as an ordinary message, so the sender is not trapped in a mode they cannot leave.
+    $waiting = $script:pendingBridge[$ChatId]
+    if ($waiting -and $waiting.PermissionId) {
+        $decision = ConvertTo-BridgeDecision -Text $Text
+        if ($decision) {
+            $ok = Send-BridgePermissionReply -Config $waiting.Config -RequestId $waiting.PermissionId -Decision $decision
+            if ($ok) {
+                $waiting.PermissionId = $null
+                $waiting.Deadline     = (Get-Date).AddSeconds(300)
+                $script:pendingBridge[$ChatId] = $waiting
+                $ack = switch ($decision) {
+                    'once'   { "Allowed once. Continuing." }
+                    'always' { "Allowed and remembered. Continuing." }
+                    'reject' { "Refused. The session will carry on without it." }
+                }
+                Send-TelegramMessage -ChatId $ChatId -Text $ack
+                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "permission-$decision" -ResponseText $ack
+                Write-Host "  Permission $decision applied for $ChatId" -ForegroundColor Yellow
+            } else {
+                $err = "Could not deliver that decision. Answer it in the terminal instead."
+                Send-TelegramMessage -ChatId $ChatId -Text $err
+                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "permission-failed" -ResponseText $err
+            }
+            return
+        }
+        # Not a decision - remind, and let it fall through as a normal message.
+        Send-TelegramMessage -ChatId $ChatId -Text "Still waiting on a permission decision - reply allow, always, or reject. Handling your message meanwhile."
     }
 
     # ---- Stage 1: Y10 check - ratification refusal ----
@@ -760,33 +925,11 @@ function Process-Message {
 
         if (Test-BridgeEnabled -Config $bridgeCfg) {
             Write-Host "  Routing @$agentName through the interactive bridge" -ForegroundColor DarkCyan
-            $bridgeResult = Invoke-TuiBridge -Config $bridgeCfg -Root $yggRoot -Text $agentPrompt
-
-            if ($bridgeResult.Ok) {
-                $output      = Format-RemoteOutput -Text $bridgeResult.Text
-                $bridgeStage = "bridge"
-                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
-                    -ExitCode 0 -Detail "session=$($bridgeResult.SessionId)"
-            }
-            elseif ($bridgeResult.Reason -eq 'reply-timeout') {
-                # The prompt DID reach the terminal and may still be running. Do NOT fall back to
-                # the headless path here: that would run the same instruction a second time.
-                $output      = "Sent to the session, but no answer within $($bridgeCfg.replyTimeoutSeconds)s. It may still be working - check the terminal."
-                $bridgeStage = "bridge-timeout"
-                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
-                    -ExitCode 1 -Detail "session=$($bridgeResult.SessionId) reply-timeout"
-            }
-            elseif ($bridgeResult.Reason -eq 'delivery-unconfirmed') {
-                # The /tui/ POSTs were accepted but no session shows the prompt - most likely no
-                # TUI is attached. Also NOT a fallback case: the submit was accepted, so running
-                # it headlessly risks executing the same instruction twice.
-                $output      = "Submitted to the terminal, but no session shows it. Check that a TUI is attached (opencode attach). Not retried, to avoid running it twice."
-                $bridgeStage = "bridge-unconfirmed"
-                Write-ExecutionLog -Agent $agentName -Prompt $agentPrompt -Output $output `
-                    -ExitCode 1 -Detail "delivery-unconfirmed"
-            }
-            else {
-                Write-Host "  Bridge unavailable ($($bridgeResult.Reason)); falling back to headless." -ForegroundColor DarkYellow
+            # Submit and return. The reply, any permission prompt, and the timeout are all
+            # serviced by Update-PendingBridgeRequests so the daemon keeps polling Telegram.
+            if (Start-BridgeRequest -Text $agentPrompt -ChatId $ChatId -Agent $agentName -Config $bridgeCfg) {
+                if (Test-Path $agentPromptFile) { Remove-Item $agentPromptFile -Force -ErrorAction SilentlyContinue }
+                return
             }
         }
 
@@ -814,31 +957,9 @@ function Process-Message {
         # mangled copy of their own conversation inside their own terminal.
         $bridgeCfgGen = Get-BridgeConfig -Root $yggRoot
         if (Test-BridgeEnabled -Config $bridgeCfgGen) {
-            $genResult = Invoke-TuiBridge -Config $bridgeCfgGen -Root $yggRoot -Text $Text
-            if ($genResult.Ok) {
-                $output = Format-RemoteOutput -Text $genResult.Text
-                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $output `
-                    -ExitCode 0 -Detail "session=$($genResult.SessionId)"
-                Send-TelegramMessage -ChatId $ChatId -Text $output
-                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge" -ResponseText $output
+            if (Start-BridgeRequest -Text $Text -ChatId $ChatId -Agent "general" -Config $bridgeCfgGen) {
                 return
             }
-            if ($genResult.Reason -eq 'reply-timeout') {
-                $msg = "Sent to the session, but no answer within $($bridgeCfgGen.replyTimeoutSeconds)s. It may still be working - check the terminal."
-                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $msg -ExitCode 1 -Detail "reply-timeout"
-                Send-TelegramMessage -ChatId $ChatId -Text $msg
-                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge-timeout" -ResponseText $msg
-                return
-            }
-            if ($genResult.Reason -eq 'delivery-unconfirmed') {
-                # Same reasoning as the @-path: accepted submit, unconfirmed landing, no retry.
-                $msg = "Submitted to the terminal, but no session shows it. Check that a TUI is attached (opencode attach). Not retried, to avoid running it twice."
-                Write-ExecutionLog -Agent "general" -Prompt $Text -Output $msg -ExitCode 1 -Detail "delivery-unconfirmed"
-                Send-TelegramMessage -ChatId $ChatId -Text $msg
-                Write-MessageLog -MessageText $Text -FromUser $ChatId -Stage "general-bridge-unconfirmed" -ResponseText $msg
-                return
-            }
-            Write-Host "  Bridge unavailable ($($genResult.Reason)); falling back to headless." -ForegroundColor DarkYellow
         }
 
         # Build project context + conversation history
@@ -1100,6 +1221,14 @@ function Start-DaemonLoop {
         if ($script:tgToken -and (-not $lastPollTime -or ($now - $lastPollTime).TotalSeconds -ge 10)) {
             $lastPollTime = $now
             Invoke-TelegramPoll
+        }
+
+        # ---- Service in-flight bridge requests (every tick) ----
+        # Runs at the loop's 1-second cadence, not the 10-second poll cadence: a permission
+        # dialog should reach the phone promptly, and this is a couple of cheap local HTTP calls
+        # only while something is actually in flight.
+        if ($script:pendingBridge.Count -gt 0) {
+            Update-PendingBridgeRequests
         }
 
         # ---- Heartbeat check (every 60 seconds) ----
