@@ -1,0 +1,18 @@
+{
+  "_comment": "Copy to .ygg-bridge.json to enable the interactive remote bridge. BOTH 'enabled' and 'agentPinningWaived' must be true before remote prompts are delivered into the visible TUI. Two flags, not one, because turning this on waives a security control: submitting into the TUI runs the prompt under whatever agent that session has selected, so the '--agent ratatoskr' pinning that keeps remote text away from edit/bash does not apply. Read guides/interactive-bridge.md before setting these.",
+
+  "enabled": false,
+  "agentPinningWaived": false,
+
+  "url": "http://127.0.0.1:4096",
+
+  "_comment_auth": "Set OPENCODE_SERVER_PASSWORD when starting the server and put the same value here. Without it the server accepts any local client. It binds to loopback so it is not reachable from the network, but any local process could drive an agent holding edit and bash.",
+  "username": "opencode",
+  "password": null,
+
+  "_comment_timeout": "How long to wait for the session to finish answering before telling the phone it is still working. The prompt is already in the terminal either way.",
+  "replyTimeoutSeconds": 300,
+
+  "_comment_select": "Leave this false. False means the prompt goes into whatever session your TUI is already showing - it continues the conversation you are looking at. Setting it true forces the terminal to JUMP to the last session the remote channel used before submitting, which is only useful if you want the remote channel pinned to one dedicated conversation. It defaulted to true once and that is what navigated the gardener away from their active conversation on the first live test.",
+  "selectSession": false
+}
