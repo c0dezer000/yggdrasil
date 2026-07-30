@@ -469,3 +469,9 @@ preserved and unchanged.
 ---
 
 *(empty)*
+
+### Stage 0 2026-07-31 — P6 reconciliation 
+
+P6 Wave 1 is complete: R5 (regression detection), R6 (meta-constitutional layer), MCP bridge, and R1 (provenance consolidation protocol) all delivered. SLICES.md updated from Not Started to In Progress. 
+
+- [canon:reconciliation] p6-status — P6 Wave 1 tasks acknowledged. container: roadmap/SLICES.md, roadmap/P6-autonomous-improvement.md. rationale: Phase had three delivered tasks while SLICES showed Not Started. status: ratified 2026-07-31.

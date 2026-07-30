@@ -28,7 +28,8 @@ Every seed component belongs to exactly one of five layers.
 | **1 — Meta-constitutional** | Rules about which rules exist, how they are classified, and who can change them | **Gardener only** | Commit, with growth-ledger entry |
 | **2 — Constitutional** | Hard constraints on the system: identity, boundaries, gates, values | **Gardener only** | Commit, with growth-ledger entry |
 | **3 — Protocol** | Procedures, workflows, role definitions, and verification rules | System proposes, gardener ratifies | Staging → ratification |
-| **4 — Memory (durable)** | Ratified facts about the gardener, goals, projects, capabilities, decisions, relationships | System proposes, gardener ratifies | Staging → ratification |
+| **4g — Memory (global)** | Ratified governance facts shared across all projects: profile, goals, cross-project decisions, projects index, patterns | System proposes, gardener ratifies | Staging → ratification |
+| **4p — Memory (project)** | Ratified facts scoped to one project: project decisions, capabilities, conventions, roster, project-specific memory | System proposes, gardener ratifies | Staging → ratification, scoped to project |
 | **5 — Working state** | Ephemeral records, logs, auto-generated files, provenance, buffers, guides, evaluations | System writes directly | Append-only or overwrite |
 
 ---
@@ -78,7 +79,7 @@ Every seed component belongs to exactly one of five layers.
 
 ---
 
-## Layer 4 — Memory (durable)
+## Layer 4g — Memory (global)
 
 **Who can change:** System proposes, gardener ratifies. Every durable fact must arrive through staging.
 
@@ -87,12 +88,47 @@ Every seed component belongs to exactly one of five layers.
 **Contents:**
 - `seed/memory/profile.md` — gardener identity, environment, preferences
 - `seed/memory/goals.md` — standing objectives
-- `seed/memory/projects.md` — project index and state pointers
-- `seed/memory/capabilities.md` — capability registry
+- `seed/memory/projects.md` — project index and state pointers (registries, not content)
 - `seed/memory/decisions.md` — cross-project decision record
+- `seed/memory/capabilities.md` — capability registry
 - `seed/memory/relationships.md` — seat pair relationship ledger
+- `seed/memory/patterns.md` — cross-project learned patterns (future)
 
-**Test:** Does the file record facts that should only change through explicit ratification?
+**Scope:** Shared across all projects. Every project reads the same global memory.
+
+---
+
+## Layer 4p — Memory (project)
+
+**Who can change:** System proposes, gardener ratifies. Scoped to the active project.
+
+**Amendment method:** Staging entry → gardener approval → durable write. Staging is per-project; project A's staging does not block project B's.
+
+**Contents (per project, under `.ygg/memory/`):**
+- `profile.md` — project-specific context and conventions
+- `goals.md` — project-specific objectives
+- `decisions.md` — project-specific decisions
+- `capabilities.md` — project-specific capabilities
+- `relationships.md` — project-specific seat pair relationships
+- `provenance.md` — project-specific behavioral record
+
+**Test:** Does the file record facts scoped to one project?
+
+---
+
+## Overlay tightening rule
+
+A project overlay (`overlay/`) may:
+- Add a Layer 3 protocol file (project-specific procedure)
+- Add a high-stakes register entry (project-specific constraint)
+- Narrow a roster (remove roles not relevant to the project)
+
+A project overlay may **never**:
+- Shadow or override a Layer 1 or Layer 2 file (path collision is a hard error, not a merge)
+- Relax a gate, widen a boundary, or reduce a must-never rule
+- Alter the constitution, gates, or values
+
+This rule is structural: `ygg doctor` detects layered path collisions as guard failures.
 
 ---
 

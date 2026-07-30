@@ -18,6 +18,7 @@
     retrieve   - look up file paths by topic in the knowledge index (grep-based)
     embed      - re-embed all seed markdown files using nomic-embed-text via Ollama
     regression-check - pre/post snapshot diff for regression detection in staging ratification
+    export     - render a markdown file to docx, pdf, or xlsx (write-only)
 #>
 
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
@@ -102,6 +103,14 @@ switch ($resolvedSubcommand.ToLower()) {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-mcp.ps1") @resolvedArgs
         exit $LASTEXITCODE
     }
+    "kernel" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-kernel.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "export" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-export.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
     "check-queue" {
         # Removed. The task queue was a handoff to a consumer that never existed: this
         # subcommand was the ONLY reader of work\task-queue.md, and it ran only when a human
@@ -137,7 +146,9 @@ switch ($resolvedSubcommand.ToLower()) {
         Write-Host "  embed         Re-embed all seed markdown files using nomic-embed-text via Ollama" -ForegroundColor Gray
         Write-Host "  serve         Start the shared opencode server for the interactive remote bridge" -ForegroundColor Gray
         Write-Host "  regression-check  Pre/post snapshot diff for regression detection in staging ratification" -ForegroundColor Gray
+        Write-Host "  kernel            Build, verify, and inspect the governance kernel" -ForegroundColor Gray
         Write-Host "  mcp               MCP server bridge (plumbing only -- no server activated without Gate 4)" -ForegroundColor Gray
+        Write-Host "  export            Render a markdown file to docx, pdf, or xlsx (write-only; never opens a document)" -ForegroundColor Gray
         exit 1
     }
 }

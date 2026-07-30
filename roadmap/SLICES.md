@@ -10,7 +10,8 @@ The single file that answers "where does this project stand." Read at every boot
 | P3 | `P3-presence.md` | Always-on presence | In Progress | P2 | 2 | 2026-07-28 |
 | P4 | `P4-local-model.md` | Local-model bench + interop | Not Started | P2 | 0 | 2026-07-29 |
 | P5 | `P5-self-improvement.md` | Self-improvement leaps — learning, memory, trust, retrieval, wisdom | Completed | P2 | 4 | 2026-07-29 |
-| P6 | `P6-autonomous-improvement.md` | Autonomous self-improvement — provenance consolidation, adversarial testing, regression detection, self-directed work | Not Started | P5 | 0 | 2026-07-29 |
+| P6 | `P6-autonomous-improvement.md` | Autonomous self-improvement — provenance consolidation, adversarial testing, regression detection, self-directed work | In Progress | P5 | 1 | 2026-07-31 |
+| P7 | `P7-platform.md` | Scope separation — multi-project governance, kernel artifact, project lifecycle | Not Started | P6 | 0 | 2026-07-31 |
 
 **Status values:** Not Started · In Progress · Blocked · Needs Review · Completed · Locked
 (Locked is gardener-only.)
