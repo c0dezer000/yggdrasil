@@ -22,7 +22,7 @@ Triggered by the loop command or any request to continue work.
 
 5. **Self-validation** — the executing role validates its work against the verbatim done-condition. Third failed attempt: set Blocked and stop for the gardener.
 
-6. **Record** — the executing role ticks its checkbox and appends **one** log line. On any status change: **invoke `<documentation-keeper>` via the task tool** to update the index. The index is not touched otherwise.
+6. **Record** — the executing role ticks its checkbox and appends **one** log line. On any status change: **invoke `<documentation-keeper>` via the task tool** to update the index. The index is not touched otherwise. If the status change modifies durable files (seed/, constitution/, conformance/, provenance), optionally run `ygg regression-check pre` before the change and `ygg regression-check post` after, to capture a regression report in the loop log.
 
 7. **INVOKE `<controller>` via the task tool** → exactly one line:
    `DECISION: continue | complete | block | reopen | escalate`

@@ -17,6 +17,7 @@
     session-state - update or clear the ephemeral session-state file (manual invocation only)
     retrieve   - look up file paths by topic in the knowledge index (grep-based)
     embed      - re-embed all seed markdown files using nomic-embed-text via Ollama
+    regression-check - pre/post snapshot diff for regression detection in staging ratification
 #>
 
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
@@ -93,6 +94,14 @@ switch ($resolvedSubcommand.ToLower()) {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-serve.ps1") @resolvedArgs
         exit $LASTEXITCODE
     }
+    "regression-check" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-regression-check.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "mcp" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-mcp.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
     "check-queue" {
         # Removed. The task queue was a handoff to a consumer that never existed: this
         # subcommand was the ONLY reader of work\task-queue.md, and it ran only when a human
@@ -127,6 +136,8 @@ switch ($resolvedSubcommand.ToLower()) {
         Write-Host "  retrieve      Look up file paths by topic in the knowledge index (grep-based)" -ForegroundColor Gray
         Write-Host "  embed         Re-embed all seed markdown files using nomic-embed-text via Ollama" -ForegroundColor Gray
         Write-Host "  serve         Start the shared opencode server for the interactive remote bridge" -ForegroundColor Gray
+        Write-Host "  regression-check  Pre/post snapshot diff for regression detection in staging ratification" -ForegroundColor Gray
+        Write-Host "  mcp               MCP server bridge (plumbing only -- no server activated without Gate 4)" -ForegroundColor Gray
         exit 1
     }
 }

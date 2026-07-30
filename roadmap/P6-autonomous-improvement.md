@@ -159,7 +159,7 @@ WAVE 3 (after R2 + R4)
 
 | Gate | Triggered? | Rationale |
 |------|-----------|-----------|
-| Gate 4 | **Yes for MCP** — MCP server processes run on localhost, no external reach. But the `memory://` resource is a local file. Assessment: no new external-reach capability. No Gate 4 triggered. |
+| Gate 4 | **YES — each MCP server activation is a per-expansion encounter.** The lethal trifecta is already COMPLETE in the current configuration (private data + untrusted content + external communication). The framing "does it add external reach" was corrected per E30 (2026-07-26). Each MCP server must be assessed in resulting-configuration form, with documented mitigations, before activation. The `ygg mcp` bridge is plumbing only — no server is started without explicit gardener Gate 4 approval. |
 | Gate 1 | **Yes** — new work unit |
 | Ratification | **Yes** — for protocol changes (R3, R7) and durable memory (R4) |
 | Constitutional amendment | **No** — all changes are protocol-level or below |
