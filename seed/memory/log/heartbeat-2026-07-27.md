@@ -1,4 +1,4 @@
-﻿=== Daily Briefing ===
+=== Daily Briefing ===
 Date: 2026-07-27
 Active unit: P3 -- In Progress
 
