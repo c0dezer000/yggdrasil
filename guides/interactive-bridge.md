@@ -47,6 +47,38 @@ being acknowledged.
 If you are not willing to make that trade, leave the bridge off. Everything still works —
 remote messages keep going down the headless, agent-pinned path.
 
+### State-changing git from the remote channel — permitted 2026-07-30
+
+**Granted by gardener decision on 2026-07-30.** `git commit`, `push` and `tag` may be executed
+in response to a remote message, via `@bifrost`, on explicit gardener instruction.
+
+This supersedes the blanket prohibition in `guides/execution-bridge-verify.md`
+(*"`git commit`/`push` are forbidden — no state-changing version control"*), which described
+the old headless execution path.
+
+Understand what the grant costs, because it is not the same trade the 2026-07-26 boundaries
+amendment made. That amendment permitted state-changing git via `@bifrost` and rested on **two**
+mitigations:
+
+| Mitigation | Local session | Remote channel |
+|---|---|---|
+| **Structural** — bifrost is outside Odin's roster, so it cannot be invoked autonomously; a human names it | Holds | **Does not hold.** The bridge submits into whatever agent the TUI has selected. Nothing structurally prevents a remote message reaching a git-capable path. |
+| **Behavioural** — plan-then-confirm: present commands, stop, gardener approves, execute | Holds | Holds, but both halves now arrive over the same untrusted channel |
+
+The amendment itself recorded that `git push` *"introduces an outbound exfiltration channel
+mitigated by the structural roster exclusion and behavioural plan-then-confirm workflow."*
+On this path only the behavioural half survives.
+
+**What this means in practice:** the approval step is the whole control. If a remote message can
+produce both a plan and a "proceed", it can produce a push. Treat the Telegram account as
+equivalent to commit access, and keep `TELEGRAM_CHAT_ID` pinned to one authorised chat — the
+Stage 0 sender check in `ygg-daemon.ps1` is now load-bearing for version control, not just for
+conversation.
+
+Precedent: this already happened on 2026-07-30 at 00:51 (`logs/remote/listener-2026-07-30.md`,
+stage `general-bridge`) before it was permitted. The grant regularises it rather than
+authorising something new.
+
 ---
 
 ## Before you start — maturity of this path

@@ -18,6 +18,13 @@
 > only reader and ran only when a human typed it, so unattended `@odin` requests always timed
 > out.
 >
+> **Superseded on one further point.** The preamble below states that `git commit`/`push` are
+> **forbidden** from the remote path. That was true when written; it is no longer. On
+> **2026-07-30** the gardener granted state-changing git via `@bifrost` from the remote channel
+> on explicit instruction. See `guides/interactive-bridge.md` §"State-changing git from the
+> remote channel" for the grant and, importantly, for which of the two original mitigations
+> survives on that path.
+>
 > **For running the current remote path, see `guides/interactive-bridge.md`.**
 >
 > Kept for historical reference and because Steps 5, 8 and 9 (durable-file, injection and
@@ -34,7 +41,9 @@
 > remote channel (row `remote-channel` in `capabilities.md`). Three controls prevent durable
 > damage:
 > - Y10 gate: Odin is **forbidden** from ratifying anything (no durable memory writes).
-> - `git commit`/`push` are **forbidden** — no state-changing version control.
+> - ~~`git commit`/`push` are **forbidden** — no state-changing version control.~~
+>   **No longer true as of 2026-07-30** — permitted via `@bifrost` on explicit gardener
+>   instruction. See the superseded banner above.
 > - The constitution, gates, and boundaries files are **protected** — Odin may not modify them.
 >
 > This test verifies those controls hold. **Do not skip any step.**
