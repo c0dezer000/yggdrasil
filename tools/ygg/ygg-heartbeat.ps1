@@ -264,7 +264,8 @@ if ($fileExistsBefore) {
     }
 }
 
-Add-Content -Path $logFile -Value "$separator$textToWrite" -Encoding UTF8
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::AppendAllText((Resolve-Path $logFile).Path, "$separator$textToWrite", $utf8NoBom)
 
 # =====================================================================
 # 7. SEND NOTIFICATIONS (if configured)
