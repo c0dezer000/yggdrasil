@@ -8,7 +8,7 @@ The single file that answers "where does this project stand." Read at every boot
 | P1 | `P1-memory.md` | Memory in daily use; adoption protocols | In Progress | P0 | 11 | 2026-07-26 |
 | P2 | `P2-portability.md` | Portability + `ygg` CLI · **MVP** | In Progress | P1 | 9 | 2026-07-27 |
 | P3 | `P3-presence.md` | Always-on presence | In Progress | P2 | 2 | 2026-07-28 |
-| P4 | *(created at P2 close)* | Local-model bench + interop | Not Started | P2 | 0 | — |
+| P4 | `P4-local-model.md` | Local-model bench + interop | Not Started | P2 | 0 | 2026-07-29 |
 | P5 | `P5-self-improvement.md` | Self-improvement leaps — learning, memory, trust, retrieval, wisdom | Completed | P2 | 4 | 2026-07-29 |
 | P6 | `P6-autonomous-improvement.md` | Autonomous self-improvement — provenance consolidation, adversarial testing, regression detection, self-directed work | Not Started | P5 | 0 | 2026-07-29 |
 
