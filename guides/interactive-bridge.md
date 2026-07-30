@@ -329,6 +329,45 @@ and answer.
 
 ---
 
+## Session watch — questions asked in the terminal
+
+The bridge is otherwise request/response: it relays a reply only when a remote prompt is waiting
+on it. So if you are working in the terminal — or a loop is running — and the agent stops to
+ask something, **the phone hears nothing** and the session sits idle until someone looks.
+
+Reported 2026-07-30: a Wave 1 implementation finished with *"Want me to proceed with the MCP
+Bridge?"* in the terminal. Nothing reached the phone.
+
+Enable it in `.ygg-bridge.json`:
+
+```json
+{ "watchSession": true, "watchIntervalSeconds": 20, "watchNotify": "question" }
+```
+
+| Key | Effect |
+|---|---|
+| `watchSession` | **Off by default** — it sends unprompted messages |
+| `watchIntervalSeconds` | How often the watched session is checked (default 20) |
+| `watchNotify` | `question` relays only turns that end by asking; `all` relays every completed turn |
+
+The watched session is the one in `work/remote-session.json` — the last session the bridge
+touched. The pointer is seeded from the newest turn on first sight, so switching it on does not
+replay what is already on screen.
+
+**Answering is just a normal reply.** No special mode: whatever you send next is submitted into
+the session the TUI is showing, which is the one that asked.
+
+`question` mode looks at the last few lines of the turn, after stripping the disclosure footer
+(which always trails the real content and would otherwise hide the closing question). It fires
+on a trailing `?` and on phrasings like *want me to*, *shall I*, *which*, *let me know*,
+*need your approval*. Verified quiet on ordinary completions — "Done. Files written to…",
+"Active phase is P3…" — so it should not become noise. If it does, set `watchNotify` back or
+turn the watch off.
+
+No relay happens while a remote request is already in flight; that path owns the reply.
+
+---
+
 ## Known limitations
 
 **The agent is whatever the TUI has selected.** This is the waiver described at the top. If

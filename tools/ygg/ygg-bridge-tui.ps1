@@ -61,6 +61,15 @@ function Get-BridgeConfig {
         replyTimeoutSeconds = 300
         agentPinningWaived  = $false
         selectSession       = $false   # do not navigate the TUI; use the session on screen
+
+        # Session watch: push the agent's questions to Telegram even when the turn was NOT
+        # started remotely. Without this the bridge is request/response only - if the gardener
+        # (or a loop) is working locally and the agent stops to ask something, the phone hears
+        # nothing and the session sits waiting.
+        watchSession         = $false      # off by default; it sends unprompted messages
+        watchIntervalSeconds = 20
+        watchNotify          = 'question'  # 'question' = only turns that end by asking
+                                           # 'all'      = every completed assistant turn
     }
 
     $cfgPath = Join-Path -Path $Root -ChildPath ".ygg-bridge.json"
@@ -76,7 +85,7 @@ function Get-BridgeConfig {
         return $default
     }
 
-    foreach ($prop in @('enabled','url','password','username','replyTimeoutSeconds','agentPinningWaived','selectSession')) {
+        foreach ($prop in @('enabled','url','password','username','replyTimeoutSeconds','agentPinningWaived','selectSession','watchSession','watchIntervalSeconds','watchNotify')) {
         if ($null -ne $parsed.PSObject.Properties[$prop]) {
             $default.$prop = $parsed.$prop
         }
@@ -437,6 +446,62 @@ function Get-BridgeReplyIfReady {
 
     if ([string]::IsNullOrWhiteSpace($text)) { return $null }
     return $text.Trim()
+}
+
+function Test-BridgeIsQuestion {
+    <#
+    .SYNOPSIS
+      True when a completed assistant turn is asking the gardener for a decision.
+    .DESCRIPTION
+      Used by the session watch to avoid relaying every routine turn to the phone. Deliberately
+      conservative in what it treats as a question, and it inspects the TAIL of the message: an
+      agent often explains at length and asks in the last line, which is the part that matters.
+
+      The seed's disclosure footer -- the bracketed skills/subagents/mem-writes line -- is
+      stripped first, because it always trails the real content and would otherwise hide the
+      closing question from the tail check.
+    #>
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+
+    # Drop the disclosure footer, whatever bracket style it uses.
+    $body = $Text -replace '(?m)^\s*[⦇⟦\[\(]\s*skills:.*$', ''
+
+    $lines = @($body -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($lines.Count -eq 0) { return $false }
+
+    # Last three non-empty lines - enough to catch "…? \n\n(footer removed)" shapes.
+    $tail = ($lines | Select-Object -Last 3) -join ' '
+
+    if ($tail -match '\?\s*$') { return $true }
+    if ($tail -match '(?i)\b(want me to|shall i|should i|would you like me to|do you want|proceed\?|confirm|which (one|would)|let me know|awaiting your|need(s)? your (decision|input|approval))\b') { return $true }
+
+    return $false
+}
+
+function Get-BridgeLatestAssistantTurn {
+    <#
+    .SYNOPSIS
+      Newest COMPLETED assistant message in a session, or $null.
+      Returns @{ MessageId; Text }.
+    #>
+    param($Config, [string]$SessionId)
+
+    $msgs = Invoke-BridgeApi -Config $Config -Path "/session/$SessionId/message" -Method Get -TimeoutSec 30
+    if (-not $msgs) { return $null }
+
+    $assistant = @($msgs) | Where-Object {
+        $_.info.role -eq 'assistant' -and $_.info.time -and $_.info.time.completed
+    } | Select-Object -Last 1
+    if (-not $assistant) { return $null }
+
+    $text = (@($assistant.parts) |
+             Where-Object { $_.type -eq 'text' -and -not $_.synthetic -and -not $_.ignored } |
+             ForEach-Object { $_.text }) -join "`n"
+
+    if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+    return @{ MessageId = $assistant.info.id; Text = $text.Trim() }
 }
 
 function Get-BridgePendingPermission {

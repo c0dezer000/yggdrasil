@@ -101,6 +101,10 @@ $script:conversationHistory = @{}   # ChatId -> list of last 10 exchanges ("user
 # tick, so polling never stops.
 $script:pendingBridge = @{}
 
+# SessionId -> id of the newest assistant turn already seen by the session watch. Seeded on
+# first sight so enabling the watch does not replay whatever is already on screen.
+$script:watchLastMessageId = @{}
+
 # =====================================================================
 # HELPER FUNCTIONS
 # =====================================================================
@@ -658,6 +662,65 @@ function Update-PendingBridgeRequests {
     }
 }
 
+function Update-SessionWatch {
+    <#
+    .SYNOPSIS
+      Pushes the agent's questions to Telegram for turns that were NOT started remotely.
+    .DESCRIPTION
+      The bridge is otherwise request/response: it relays a reply only when a remote prompt is
+      waiting on it. So when the gardener is working in the terminal - or a loop is running -
+      and the agent stops to ask something, the phone hears nothing and the session sits idle
+      until someone happens to look.
+
+      Reported case, 2026-07-30: a Wave 1 implementation finished and asked
+      "Want me to proceed with the MCP Bridge?" in the terminal. Nothing reached the phone.
+
+      Off unless `watchSession` is set, because this sends unprompted messages. The watch
+      pointer is seeded from the newest turn at startup so enabling it does not immediately
+      replay whatever was already on screen.
+    #>
+    if (-not $script:tgChatId) { return }
+
+    $cfg = Get-BridgeConfig -Root $yggRoot
+    if (-not (Test-BridgeEnabled -Config $cfg)) { return }
+    if (-not $cfg.watchSession) { return }
+
+    # A remote request in flight already owns the reply path; do not double-send.
+    if ($script:pendingBridge.Count -gt 0) { return }
+
+    $sessionId = Get-BridgeRememberedSessionId -Root $yggRoot
+    if (-not $sessionId) { return }
+
+    $turn = Get-BridgeLatestAssistantTurn -Config $cfg -SessionId $sessionId
+    if (-not $turn) { return }
+
+    # First sight of a session: record where we are, send nothing.
+    if (-not $script:watchLastMessageId.ContainsKey($sessionId)) {
+        $script:watchLastMessageId[$sessionId] = $turn.MessageId
+        return
+    }
+    if ($script:watchLastMessageId[$sessionId] -eq $turn.MessageId) { return }
+
+    # Advance the pointer BEFORE deciding whether to send. If the message is not worth relaying
+    # we still must not re-examine it every interval.
+    $script:watchLastMessageId[$sessionId] = $turn.MessageId
+
+    $notify = if ($cfg.watchNotify) { $cfg.watchNotify } else { 'question' }
+    if ($notify -ne 'all' -and -not (Test-BridgeIsQuestion -Text $turn.Text)) { return }
+
+    $output = Format-RemoteOutput -Text $turn.Text
+    Send-TelegramMessage -ChatId $script:tgChatId -Text $output
+    Write-MessageLog -MessageText "(session watch)" -FromUser $script:tgChatId `
+        -Stage "watch-push" -ResponseText $output
+    Write-Host "  Session watch pushed a turn to $($script:tgChatId)" -ForegroundColor Yellow
+
+    # No pending-request entry is registered here, deliberately. The agent is waiting on a
+    # HUMAN, not producing a reply, so a pending entry would wait out its deadline and then
+    # report a timeout for a turn that had already finished. Nothing extra is needed anyway:
+    # whatever the gardener sends next is submitted by the normal bridge path into the session
+    # the TUI is showing, which is this one.
+}
+
 function Process-Message {
     <#
     .SYNOPSIS
@@ -1206,6 +1269,13 @@ function Start-DaemonLoop {
     $lastPollTime       = $null
     $lastHealthUpdate   = $null
     $lastHeartbeatCheck = $null
+    $lastWatchCheck     = $null
+
+    $watchCfg      = Get-BridgeConfig -Root $yggRoot
+    $watchInterval = if ($watchCfg.watchIntervalSeconds -gt 0) { [int]$watchCfg.watchIntervalSeconds } else { 20 }
+    if ($watchCfg.watchSession) {
+        Write-Host "  Session watch enabled (every ${watchInterval}s, notify: $($watchCfg.watchNotify))" -ForegroundColor DarkCyan
+    }
 
     # ---- MAIN LOOP ----
     while (-not $script:shutdownRequested) {
@@ -1229,6 +1299,12 @@ function Start-DaemonLoop {
         # only while something is actually in flight.
         if ($script:pendingBridge.Count -gt 0) {
             Update-PendingBridgeRequests
+        }
+
+        # ---- Session watch (interval from .ygg-bridge.json, default 20s) ----
+        if (-not $lastWatchCheck -or ($now - $lastWatchCheck).TotalSeconds -ge $watchInterval) {
+            $lastWatchCheck = $now
+            Update-SessionWatch
         }
 
         # ---- Heartbeat check (every 60 seconds) ----
