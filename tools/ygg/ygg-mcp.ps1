@@ -110,10 +110,15 @@ if ($Command -eq "tools/list" -or $Command -eq "tools/call") {
         $reqStr = "{""jsonrpc"":""2.0"",""id"":$requestId,""method"":""tools/call"",""params"":$Args}"
     }
     # Parse server command
+    # Handle batch file wrappers (npx.cmd, uvx) via cmd.exe
     $parts = $ServerCmd -split ' ', 2
     $exe = $parts[0]
     $exeArgs = ""
     if ($parts.Count -gt 1) { $exeArgs = $parts[1] }
+    if ($exe -match '\.cmd$|\.bat$|^npx|^uvx') {
+        $exe = "cmd.exe"
+        $exeArgs = "/c $ServerCmd"
+    }
     # Spawn process
     try {
         $psi = New-Object System.Diagnostics.ProcessStartInfo
