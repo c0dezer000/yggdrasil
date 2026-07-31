@@ -112,6 +112,10 @@ switch ($resolvedSubcommand.ToLower()) {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-kernel.ps1") @resolvedArgs
         exit $LASTEXITCODE
     }
+    "auto-detect" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-auto-detect.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
     "projects" {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-projects.ps1") @resolvedArgs
         exit $LASTEXITCODE
