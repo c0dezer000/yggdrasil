@@ -71,3 +71,11 @@ YYYY-MM-DD · `consolidation` · provenance · <N> entries consolidated across <
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-07-30 | Initial draft | Kvasir |
+
+## Per-project operation
+
+When multiple projects exist, consolidation runs per project against that project's memory:
+- **Yggdrasil (kernel):** consolidates from seed/memory/provenance.md
+- **External projects:** consolidates from that project's .ygg-lock or .ygg/memory/provenance.md
+- Each project's consolidation is recorded as a single entry in that project's provenance, not in the kernel's.
+- The schedule (weekly, manual, threshold) applies independently per project.
