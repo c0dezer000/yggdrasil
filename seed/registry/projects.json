@@ -1,0 +1,14 @@
+{
+    "version":  1,
+    "projects":  [
+                     {
+                         "id":  "yggdrasil",
+                         "name":  "Yggdrasil",
+                         "path":  "C:\\projects\\yggdrasil",
+                         "kernel":  "20260731-022439",
+                         "status":  "active",
+                         "last_active":  "2026-07-31",
+                         "governed":  true
+                     }
+                 ]
+}

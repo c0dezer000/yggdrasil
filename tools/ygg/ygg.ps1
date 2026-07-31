@@ -17,8 +17,13 @@
     session-state - update or clear the ephemeral session-state file (manual invocation only)
     retrieve   - look up file paths by topic in the knowledge index (grep-based)
     embed      - re-embed all seed markdown files using nomic-embed-text via Ollama
-    regression-check - pre/post snapshot diff for regression detection in staging ratification
-    export     - render a markdown file to docx, pdf, or xlsx (write-only)
+     regression-check - pre/post snapshot diff for regression detection in staging ratification
+     export     - render a markdown file to docx, pdf, or xlsx (write-only)
+     projects   - list, add, or remove registered projects
+     switch     - switch active project context (writes session digest)
+     status     - show current project and kernel binding
+     init       - initialize a new governed project (stops at Gate 1)
+     import     - import an existing project (stops at human correction pass)
 #>
 
 $scriptDir = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
@@ -107,6 +112,26 @@ switch ($resolvedSubcommand.ToLower()) {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-kernel.ps1") @resolvedArgs
         exit $LASTEXITCODE
     }
+    "projects" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-projects.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "switch" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-projects.ps1") "switch" @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "status" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-projects.ps1") "status" @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "init" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-init.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
+    "import" {
+        & (Join-Path -Path $scriptDir -ChildPath "ygg-import.ps1") @resolvedArgs
+        exit $LASTEXITCODE
+    }
     "export" {
         & (Join-Path -Path $scriptDir -ChildPath "ygg-export.ps1") @resolvedArgs
         exit $LASTEXITCODE
@@ -147,6 +172,11 @@ switch ($resolvedSubcommand.ToLower()) {
         Write-Host "  serve         Start the shared opencode server for the interactive remote bridge" -ForegroundColor Gray
         Write-Host "  regression-check  Pre/post snapshot diff for regression detection in staging ratification" -ForegroundColor Gray
         Write-Host "  kernel            Build, verify, and inspect the governance kernel" -ForegroundColor Gray
+        Write-Host "  projects          List, add, or remove registered projects" -ForegroundColor Gray
+        Write-Host "  switch            Switch active project context (writes session digest)" -ForegroundColor Gray
+        Write-Host "  status            Show current project and kernel binding" -ForegroundColor Gray
+        Write-Host "  init              Initialize a new governed project (stops at Gate 1)" -ForegroundColor Gray
+        Write-Host "  import            Import an existing project (stops at human correction pass)" -ForegroundColor Gray
         Write-Host "  mcp               MCP server bridge (plumbing only -- no server activated without Gate 4)" -ForegroundColor Gray
         Write-Host "  export            Render a markdown file to docx, pdf, or xlsx (write-only; never opens a document)" -ForegroundColor Gray
         exit 1
