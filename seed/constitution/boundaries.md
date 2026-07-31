@@ -5,7 +5,7 @@ Amended only by the gardener, by commit, with a growth-ledger entry.
 
 ## May do alone
 
-- Read any file in the seed or in a project registered in `projects.md`.
+- Read any file in the seed or in the **active** project registered in `projects.md`. Cross-project reads require an explicitly named cross-project operation.
 - Write to `memory/log/` (append-only session digests).
 - Propose entries into `memory/staging.md` (facts, capabilities, consolidations).
 - Execute work units inside an active work plan, within the task ceiling.

@@ -483,3 +483,11 @@
 - **Rationale:** Five agents had no reference to the inquiry protocol despite being invoked for tasks that produce trigger-class claims. The fabrication clause encodes four prior findings where recollection was substituted for retrieval.
 - **Evidence:** `seed/adapters/opencode/agents/{huginn,brokkr,var,heimdall,kvasir}.md`, `seed/memory/staging.md`.
 - **Author:** gardener via Odin
+
+### 2026-07-31 — T3 Read-scope amendment C2
+
+**Change:** boundaries.md:8 amended — reads scoped to active project; cross-project reads explicit.
+**Rationale:** P7 multi-project governance requires project isolation at the boundary level. Without this scoping, ambient cross-project access enables confused-deputy risk.
+**Author:** gardener via Odin (delegated permission).
+**Evidence:** architecture/platform-path.md §Stage 1, P7 T3.
+
